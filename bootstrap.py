@@ -1,12 +1,12 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import numpy as np
 import seaborn as sns
+from matplotlib.animation import FuncAnimation
 from scipy.stats import multivariate_normal
 
 from angle import Bearing
 
-sns.set_style('whitegrid')
+sns.set_style("whitegrid")
 
 
 class State:
@@ -18,7 +18,7 @@ class State:
         ----------
         state_vector : np.ndarray
             The state vector representing the state of the system.
-            It should be a 1-dimensional array, which will be reshaped 
+            It should be a 1-dimensional array, which will be reshaped
             into a column vector (2D array with one column).
 
         Attributes
@@ -39,11 +39,11 @@ class Particle(State):
         ----------
         state_vector : np.ndarray
             The state vector representing the particle's state.
-            It should be a 1-dimensional array, which will be reshaped 
+            It should be a 1-dimensional array, which will be reshaped
             into a column vector (2D array with one column).
 
         weight : float
-            The weight of the particle, representing its importance in the 
+            The weight of the particle, representing its importance in the
             particle filter. The weight should be non-negative.
 
         Attributes
@@ -64,7 +64,7 @@ class ParticleState(State):
         Parameters
         ----------
         particles : list
-            A list of Particle objects that represent the particles 
+            A list of Particle objects that represent the particles
             in the particle filter.
         """
         self.particles = particles  # Store the list of particles
@@ -81,7 +81,7 @@ class ParticleState(State):
         Returns
         -------
         np.ndarray
-            A 2D array containing the concatenated state vectors of 
+            A 2D array containing the concatenated state vectors of
             all particles.
         """
         return np.hstack([particle.state_vector for particle in self.particles])
@@ -91,7 +91,7 @@ class ParticleState(State):
         """
         Returns the weights of all particles.
 
-        This property extracts the weights associated with each 
+        This property extracts the weights associated with each
         particle and returns them as a 1D NumPy array.
 
         Returns
@@ -100,13 +100,13 @@ class ParticleState(State):
             A 1D array containing the weights of each particle.
         """
         return np.array([particle.weight for particle in self.particles])
-    
+
     @property
     def mean(self) -> np.ndarray:
         """
         Calculates the weighted mean of the particle states.
 
-        This property computes the weighted average of the particle 
+        This property computes the weighted average of the particle
         states using the particle weights.
 
         Returns
@@ -115,13 +115,13 @@ class ParticleState(State):
             A 1D array representing the weighted mean of the particle states.
         """
         return np.average(self.state_vector, axis=1, weights=self.weights)
-    
+
     @property
     def num_particles(self) -> int:
         """
         Returns the number of particles.
 
-        This property counts the total number of particles present in 
+        This property counts the total number of particles present in
         the particle state.
 
         Returns
@@ -130,7 +130,7 @@ class ParticleState(State):
             The number of particles in the particle state.
         """
         return len(self.particles)
-    
+
 
 class ConstantVelocityTransitionModel:
     def __init__(self, dt: float, process_noise: float):
@@ -142,17 +142,17 @@ class ConstantVelocityTransitionModel:
         dt : float
             The time step for the transition model.
         process_noise : float
-            The standard deviation of the process noise, used to model 
+            The standard deviation of the process noise, used to model
             uncertainty in the state transitions.
         """
         self.dt = dt  # Time step
         self.process_noise = process_noise  # Process noise standard deviation
 
-    def function(self, state: State) -> np.ndarray:        
+    def function(self, state: State) -> np.ndarray:
         """
         Computes the next state based on the current state and process noise.
 
-        The next state is calculated using the state transition matrix 
+        The next state is calculated using the state transition matrix
         (F) and adding process noise.
 
         Parameters
@@ -163,18 +163,18 @@ class ConstantVelocityTransitionModel:
         Returns
         -------
         np.ndarray
-            The predicted next state as a column vector, including 
+            The predicted next state as a column vector, including
             process noise.
         """
         noise = np.random.multivariate_normal(np.zeros(4), self.Q).reshape(-1, 1)
         return self.F @ state.state_vector + noise
-    
+
     @property
     def F(self) -> np.ndarray:
         """
         State transition matrix.
 
-        The transition matrix describes how the state evolves over one 
+        The transition matrix describes how the state evolves over one
         time step given constant velocity.
 
         Returns
@@ -182,17 +182,14 @@ class ConstantVelocityTransitionModel:
         np.ndarray
             A 4x4 state transition matrix.
         """
-        return np.array([[1, self.dt, 0, 0],
-                         [0, 1, 0, 0],
-                         [0, 0, 1, self.dt],
-                         [0, 0, 0, 1]])
-    
+        return np.array([[1, self.dt, 0, 0], [0, 1, 0, 0], [0, 0, 1, self.dt], [0, 0, 0, 1]])
+
     @property
     def Q(self) -> np.ndarray:
         """
         Process noise covariance matrix.
 
-        The covariance matrix models the process noise for the state 
+        The covariance matrix models the process noise for the state
         transitions, taking into account the time step and process noise.
 
         Returns
@@ -200,11 +197,18 @@ class ConstantVelocityTransitionModel:
         np.ndarray
             A 4x4 covariance matrix for the process noise.
         """
-        return np.array([[self.dt**3/3, self.dt**2/2, 0, 0],
-                         [self.dt**2/2, self.dt, 0, 0],
-                         [0, 0, self.dt**3/3, self.dt**2/2],
-                         [0, 0, self.dt**2/2, self.dt]]) * self.process_noise**2
-    
+        return (
+            np.array(
+                [
+                    [self.dt**3 / 3, self.dt**2 / 2, 0, 0],
+                    [self.dt**2 / 2, self.dt, 0, 0],
+                    [0, 0, self.dt**3 / 3, self.dt**2 / 2],
+                    [0, 0, self.dt**2 / 2, self.dt],
+                ]
+            )
+            * self.process_noise**2
+        )
+
 
 class CartesianToRangeBearingMeasurementModel:
     def __init__(self, measurement_noise: np.ndarray, mapping: tuple):
@@ -214,10 +218,10 @@ class CartesianToRangeBearingMeasurementModel:
         Parameters
         ----------
         measurement_noise : np.ndarray
-            The measurement noise covariance matrix used to model 
+            The measurement noise covariance matrix used to model
             uncertainty in the measurements.
         mapping : tuple
-            A tuple indicating which elements of the state vector to use 
+            A tuple indicating which elements of the state vector to use
             for the measurement (e.g., positions in the state vector).
         """
         self.measurement_noise = measurement_noise  # Measurement noise covariance
@@ -237,10 +241,10 @@ class CartesianToRangeBearingMeasurementModel:
         Returns
         -------
         np.ndarray
-            The measurement in range and bearing as a column vector, 
+            The measurement in range and bearing as a column vector,
             optionally including measurement noise.
         """
-        state_vector = state.state_vector[self.mapping, ]
+        state_vector = state.state_vector[self.mapping,]
         x, y = state_vector[0, 0], state_vector[1, 0]
 
         # Calculate range (rho) and bearing (phi)
@@ -256,7 +260,7 @@ class CartesianToRangeBearingMeasurementModel:
             return np.array([[rho], phi]) + noise
         else:
             return np.array([[rho], phi])
-        
+
     def inverse_function(self, state: State) -> np.ndarray:
         """
         Converts the measurement in range and bearing back to Cartesian coordinates.
@@ -382,14 +386,16 @@ class BootstrapParticleFilter:
         # Calculate the difference between the observed and predicted states
         diff = observed_state - predicted_state
 
-        # The likelihood is the probability of observing `observed_state` given the predicted `predicted_state`
+        # The likelihood is the probability of observing `observed_state` given the predicted
+        # `predicted_state`
         likelihood = multivariate_normal.pdf(diff.flatten(), cov=covar)
 
         return likelihood
 
     def resample(self, particle_state: ParticleState) -> ParticleState:
         """
-        Resamples particles based on their weights if the Effective Sample Size (ESS) is below a threshold.
+        Resamples particles based on their weights if the Effective Sample Size (ESS) is below
+        a threshold.
 
         Parameters
         ----------
@@ -404,7 +410,7 @@ class BootstrapParticleFilter:
         num_particles = particle_state.num_particles
         threshold = num_particles / 2  # Threshold for resampling
         # Calculate Effective Sample Size (ESS)
-        ess = 1 / np.sum(particle_state.weights ** 2)
+        ess = 1 / np.sum(particle_state.weights**2)
 
         # Resample if the ESS is below the threshold
         if ess < threshold:
@@ -420,8 +426,13 @@ class BootstrapParticleFilter:
             index = np.searchsorted(cdf, u_j)
 
             new_state_vector = np.array([particle_state.state_vector[:, i] for i in index]).T
-            new_weight = np.ones(num_particles) / num_particles  # Equal weight for resampled particles
-            new_particles = [Particle(state_vector, weight) for state_vector, weight in zip(new_state_vector.T, new_weight)]
+            new_weight = (
+                np.ones(num_particles) / num_particles
+            )  # Equal weight for resampled particles
+            new_particles = [
+                Particle(state_vector, weight)
+                for state_vector, weight in zip(new_state_vector.T, new_weight)
+            ]
             return ParticleState(new_particles)
         else:
             return particle_state
@@ -458,9 +469,9 @@ measurements = [measurement_model.function(state, noise=True) for state in truth
 num_particles = 1000
 
 # Create a prior state
-samples = np.random.multivariate_normal(mean=[0, 1, 0, 1],
-                                        cov=np.diag([1.5, 0.5, 1.5, 0.5]),
-                                        size=num_particles)
+samples = np.random.multivariate_normal(
+    mean=[0, 1, 0, 1], cov=np.diag([1.5, 0.5, 1.5, 0.5]), size=num_particles
+)
 
 weights = np.ones(num_particles) / num_particles
 particles = np.array([Particle(sample, weight) for sample, weight in zip(samples, weights)])
@@ -483,32 +494,50 @@ for measurement in measurements:
 # Plot the results
 fig, ax = plt.subplots(figsize=(12, 8))
 
+
 def update(k):
     ax.clear()
     # Plot the ground truth
-    ax.plot([state.state_vector[0] for state in truth[:k]],
-            [state.state_vector[2] for state in truth[:k]],
-            color='C3', linestyle='--', label='Ground Truth')
+    ax.plot(
+        [state.state_vector[0] for state in truth[:k]],
+        [state.state_vector[2] for state in truth[:k]],
+        color="C3",
+        linestyle="--",
+        label="Ground Truth",
+    )
 
     # Plot the particles
-    ax.scatter(track[k].state_vector[mapping[0], :], 
-               track[k].state_vector[mapping[1], :], 
-               color='C2', label='Particles', s=track[k].weights*1000, alpha=0.5)
+    ax.scatter(
+        track[k].state_vector[mapping[0], :],
+        track[k].state_vector[mapping[1], :],
+        color="C2",
+        label="Particles",
+        s=track[k].weights * 1000,
+        alpha=0.5,
+    )
 
     # Plot the estimated track up to the current time step
-    ax.plot([state.mean[0] for state in track[:k]],
-            [state.mean[2] for state in track[:k]],
-            color='C2', label='Estimated Track')
+    ax.plot(
+        [state.mean[0] for state in track[:k]],
+        [state.mean[2] for state in track[:k]],
+        color="C2",
+        label="Estimated Track",
+    )
 
-    ax.set_xlabel('X Position')
-    ax.set_ylabel('Y Position')
+    ax.set_xlabel("X Position")
+    ax.set_ylabel("Y Position")
     ax.legend()
-    ax.set_xlim(min([state.state_vector[0] for state in truth]) - 10, 
-                max([state.state_vector[0] for state in truth]) + 10)
-    ax.set_ylim(min([state.state_vector[2] for state in truth]) - 10, 
-                max([state.state_vector[2] for state in truth]) + 10)
-    
+    ax.set_xlim(
+        min([state.state_vector[0] for state in truth]) - 10,
+        max([state.state_vector[0] for state in truth]) + 10,
+    )
+    ax.set_ylim(
+        min([state.state_vector[2] for state in truth]) - 10,
+        max([state.state_vector[2] for state in truth]) + 10,
+    )
+
     return ax
+
 
 ani = FuncAnimation(fig, update, frames=num_steps, repeat=False)
 plt.show()
