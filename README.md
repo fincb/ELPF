@@ -17,4 +17,4 @@ The ELPF directly addresses the uncertainty in measurement origins—a common pr
 
 ## References
 
-[^1]: Marrs, A., Maskell, S., & Bar-Shalom, Y. (2002, August). Expected likelihood for tracking in clutter with particle filters. In *Signal and Data Processing of Small Targets 2002* (Vol. 4728, pp. 230-239). SPIE. [Link to paper](https://doi.org/10.1117/12.478601)
+[^1]: Marrs, A., Maskell, S., & Bar-Shalom, Y. (2002, August). Expected likelihood for tracking in clutter with particle filters. In *Signal and Data Processing of Small Targets 2002* (Vol. 4728, pp. 230-239). SPIE. [Link to paper](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/4728/1/Expected-likelihood-for-tracking-in-clutter-with-particle-filters/10.1117/12.478507.full)
