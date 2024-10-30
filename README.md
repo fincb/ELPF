@@ -8,7 +8,7 @@ Currently, the repository includes both the Bootstrap Particle Filter and the Ex
 
 The Expected Likelihood Particle Filter (ELPF) is a method for tracking targets amidst clutter using a particle filter framework[^1]. This approach is particularly beneficial in scenarios where traditional gating techniques, which rely on a readily available covariance matrix, are unsuitable due to the non-linearity or non-Gaussian characteristics of the system.
 
-The ELPF directly addresses the uncertainty in measurement origins—a common problem in cluttered environments—by incorporating Probabilistic Data Association (PDA). Instead of relying on a single gated measurement, the ELPF computes an expected likelihood, which is essentially a weighted mixture of individual likelihoods from all available measurements. These weights are determined by PDA calculations. By updating the particle weights based on this expected likelihood, the ELPF achieves a more comprehensive and robust update process.
+The ELPF directly addresses the uncertainty in measurement origins—a common problem in cluttered environments—by incorporating Probabilistic Data Association (PDA). Instead of relying on a single gated measurement, the ELPF computes an expected likelihood, which is essentially a weighted mixture of individual likelihoods from all available measurements. These weights are determined by PDA calculations. By updating the particle weights based on this expected likelihood, the ELPF achieves a comprehensive and robust update process.
 
 ## Features
 

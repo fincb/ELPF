@@ -1,6 +1,7 @@
-import numpy as np
+from math import ceil, floor, trunc
 from numbers import Real
-from math import floor, ceil, trunc
+
+import numpy as np
 
 
 class Angle(Real):
@@ -148,12 +149,12 @@ class Angle(Real):
 
     def rad2deg(self):
         return np.rad2deg(self._value)
-    
+
     @classmethod
     def average(cls, angles, weights=None):
         """
         Calculates the circular mean for a list of angles.
-        
+
         Parameters
         ----------
         angles : list of :class `~.Angle`
@@ -174,7 +175,7 @@ class Angle(Real):
 
         result = np.arctan2(
             float(np.sum(np.sin(angles) * weights) / weight_sum),
-            float(np.sum(np.cos(angles) * weights) / weight_sum)
+            float(np.sum(np.cos(angles) * weights) / weight_sum),
         )
 
         return cls(result)

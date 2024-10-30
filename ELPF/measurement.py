@@ -1,7 +1,7 @@
 import numpy as np
 
-from angle import Bearing
-from state import State
+from ELPF.angle import Bearing
+from ELPF.state import State
 
 
 class CartesianToRangeBearingMeasurementModel:
@@ -50,7 +50,7 @@ class CartesianToRangeBearingMeasurementModel:
 
         # Add noise if specified
         if noise:
-            noise = np.random.multivariate_normal(np.zeros(2), self.R).reshape(-1, 1)
+            noise = np.random.multivariate_normal(np.zeros(2), self.covar).reshape(-1, 1)
             return np.array([[rho], phi]) + noise
         else:
             return np.array([[rho], phi])
@@ -76,7 +76,7 @@ class CartesianToRangeBearingMeasurementModel:
         return np.array([[x], [y]])
 
     @property
-    def R(self) -> np.ndarray:
+    def covar(self) -> np.ndarray:
         """
         Measurement noise covariance matrix.
 

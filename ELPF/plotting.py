@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
 
-from detection import Clutter, TrueDetection
+from ELPF.detection import Clutter, TrueDetection
 
 sns.set_style("whitegrid")
 

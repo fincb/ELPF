@@ -1,11 +1,10 @@
 import numpy as np
-from scipy.stats import multivariate_normal, multivariate_t
 
-from state import Particle, ParticleState
+from ELPF.state import Particle, ParticleState
 
 
 class ParticleFilter:
-    def __init__(self, transition_model, measurement_model):
+    def __init__(self, transition_model, measurement_model, likelihood_function):
         """
         Initialises the Particle Filter with a given transition and measurement model.
 
@@ -18,6 +17,7 @@ class ParticleFilter:
         """
         self.transition_model = transition_model
         self.measurement_model = measurement_model
+        self.likelihood_function = likelihood_function
 
     def predict(self, particle_state: ParticleState) -> ParticleState:
         """
@@ -103,7 +103,9 @@ class BootstrapParticleFilter(ParticleFilter):
             predicted_measurement = self.measurement_model.function(particle, noise=False)
 
             # Calculate the likelihood using the Gaussian PDF
-            likelihood = self.gaussian_pdf(measurement, predicted_measurement)
+            likelihood = self.likelihood_function(
+                measurement, predicted_measurement, self.measurement_model.covar
+            )
 
             # Update the particle's weight
             new_particles.append(Particle(particle.state_vector, particle.weight * likelihood))
@@ -115,33 +117,6 @@ class BootstrapParticleFilter(ParticleFilter):
                 p.weight /= total_weight
 
         return self.resample(ParticleState(new_particles))
-
-    def gaussian_pdf(self, observed_state: np.ndarray, predicted_state: np.ndarray) -> float:
-        """
-        Computes the likelihood of the observed state given the predicted state.
-
-        Parameters
-        ----------
-        observed_state : np.ndarray
-            The observed measurement state.
-        predicted_state : np.ndarray
-            The predicted measurement state from the particle.
-
-        Returns
-        -------
-        float
-            The likelihood of the observed state given the predicted state.
-        """
-        # Use the noise covariance matrix for the calculation
-        covar = self.measurement_model.R
-
-        # Calculate the difference between the observed and predicted states
-        diff = observed_state - predicted_state
-
-        # Calculate the likelihood using the multivariate normal distribution
-        likelihood = multivariate_normal.pdf(diff.flatten(), cov=covar)
-
-        return likelihood
 
 
 class ExpectedLikelihoodParticleFilter(ParticleFilter):
@@ -169,7 +144,9 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
         for i, particle in enumerate(particle_state.particles):
             for j, measurement in enumerate(measurements):
                 predicted_measurement = self.measurement_model.function(particle, noise=False)
-                likelihood = self.t_pdf(measurement.state_vector, predicted_measurement)
+                likelihood = self.likelihood_function(
+                    measurement.state_vector, predicted_measurement, self.measurement_model.covar
+                )
                 association_probabilities[i, j] = likelihood
 
         # Update particle weights using PDA and normalise
@@ -189,38 +166,3 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
 
         # Return resampled ParticleState if needed
         return self.resample(ParticleState(new_particles))
-
-    def t_pdf(self, observed_state: np.ndarray, predicted_state: np.ndarray) -> float:
-        """
-        Computes the likelihood of the observed state given the predicted state
-        using a multivariate Student's t-distribution.
-
-        Parameters
-        ----------
-        observed_state : np.ndarray
-            The observed measurement state.
-        predicted_state : np.ndarray
-            The predicted measurement state from the particle.
-
-        Returns
-        -------
-        float
-            The likelihood of the observed state given the predicted state.
-        """
-        # Use the noise covariance matrix from the measurement model
-        covar = self.measurement_model.R
-
-        # Degrees of freedom for the t-distribution
-        df = observed_state.size
-
-        # Calculate the difference
-        diff = observed_state - predicted_state
-
-        # Ensure the covariance is a 2D matrix
-        if covar.ndim == 1:  # Convert 1D array to 2D covariance matrix if necessary
-            covar = np.diag(covar)
-
-        # Calculate the likelihood using the multivariate t-distribution
-        likelihood = multivariate_t.pdf(diff.flatten(), df=df, shape=covar)
-
-        return likelihood

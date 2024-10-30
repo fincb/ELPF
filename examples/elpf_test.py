@@ -2,12 +2,13 @@ import numpy as np
 from scipy.stats import uniform
 from tqdm import tqdm
 
-from detection import Clutter, TrueDetection
-from measurement import CartesianToRangeBearingMeasurementModel
-from particle_filter import ExpectedLikelihoodParticleFilter
-from plotting import plot
-from state import Particle, ParticleState, State
-from transition import ConstantVelocityTransitionModel
+from ELPF.detection import Clutter, TrueDetection
+from ELPF.likelihood import t_pdf
+from ELPF.measurement import CartesianToRangeBearingMeasurementModel
+from ELPF.particle_filter import ExpectedLikelihoodParticleFilter
+from ELPF.plotting import plot
+from ELPF.state import Particle, ParticleState, State
+from ELPF.transition import ConstantVelocityTransitionModel
 
 if __name__ == "__main__":
     # Set random seed
@@ -77,11 +78,12 @@ if __name__ == "__main__":
     prior = ParticleState(particles)
 
     # Create a particle filter
-    pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model)
+    pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model, t_pdf)
 
+    # Create a track to store the state estimates
     track = [prior]
 
-    # Perform the particle filter
+    # Perform the particle filtering
     for measurements in tqdm(all_measurements, desc="Filtering"):
         # Predict the new state
         prior = pf.predict(track[-1])
