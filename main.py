@@ -1,15 +1,10 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-from matplotlib.animation import FuncAnimation
 
 from measurement import CartesianToRangeBearingMeasurementModel
 from particle_filter import BootstrapParticleFilter
+from plotting import plot
 from state import Particle, ParticleState, State
 from transition import ConstantVelocityTransitionModel
-
-sns.set_style("whitegrid")
-
 
 if __name__ == "__main__":
     # Set random seed
@@ -65,51 +60,9 @@ if __name__ == "__main__":
 
         track.append(posterior)
 
+    inv_measurements = [
+        measurement_model.inverse_function(State(measurement)) for measurement in measurements
+    ]
+
     # Plot the results
-    fig, ax = plt.subplots(figsize=(12, 8))
-
-    def update(k):
-        ax.clear()
-        # Plot the ground truth up to the current time step
-        ax.plot(
-            [state.state_vector[0] for state in truth[:k]],
-            [state.state_vector[2] for state in truth[:k]],
-            color="C3",
-            linestyle="--",
-            label="Ground Truth",
-        )
-
-        # Plot the particles
-        ax.scatter(
-            track[k].state_vector[mapping[0], :],
-            track[k].state_vector[mapping[1], :],
-            color="C2",
-            label="Particles",
-            s=track[k].weights * 1000,
-            alpha=0.5,
-        )
-
-        # Plot the estimated track up to the current time step
-        ax.plot(
-            [state.mean[0] for state in track[:k]],
-            [state.mean[2] for state in track[:k]],
-            color="C2",
-            label="Estimated Track",
-        )
-
-        ax.set_xlabel("X Position")
-        ax.set_ylabel("Y Position")
-        ax.legend()
-        ax.set_xlim(
-            min([state.state_vector[0] for state in truth]) - 10,
-            max([state.state_vector[0] for state in truth]) + 10,
-        )
-        ax.set_ylim(
-            min([state.state_vector[2] for state in truth]) - 10,
-            max([state.state_vector[2] for state in truth]) + 10,
-        )
-
-        return ax
-
-    ani = FuncAnimation(fig, update, frames=num_steps, repeat=False)
-    plt.show()
+    plot(track, truth, inv_measurements, mapping, save=False)
