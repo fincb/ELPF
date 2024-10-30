@@ -2,10 +2,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.animation import FuncAnimation
 
+from detection import Clutter, TrueDetection
+
 sns.set_style("whitegrid")
 
 
-def plot(track, truth, measurements, mapping, save=False):
+def plot(track, truth, all_measurements, mapping, save=False):
     fig, ax = plt.subplots(figsize=(12, 8))
 
     num_steps = len(track)
@@ -18,6 +20,7 @@ def plot(track, truth, measurements, mapping, save=False):
     legend_elements = [
         plt.Line2D([0], [0], color="C3", linestyle="--", label="Ground Truth"),
         plt.Line2D([0], [0], color="C0", marker="o", linestyle="None", label="Measurements"),
+        plt.Line2D([0], [0], color="C8", marker="^", linestyle="None", label="Clutter"),
         plt.Line2D([0], [0], color="C2", marker="o", linestyle="None", label="Particles"),
         plt.Line2D([0], [0], color="C2", label="Estimated Track"),
     ]
@@ -34,11 +37,37 @@ def plot(track, truth, measurements, mapping, save=False):
         )
 
         # Plot the measurements
+        measurement_data = []
+        for measurement_set in all_measurements[:k]:
+            for measurement in measurement_set:
+                if measurement.measurement_model is not None:
+                    m = measurement.measurement_model.inverse_function(measurement)
+                    if isinstance(measurement, TrueDetection):
+                        measurement_data.append(m)
+
         ax.scatter(
-            [measurement[0] for measurement in measurements[:k]],
-            [measurement[1] for measurement in measurements[:k]],
+            [measurement[0] for measurement in measurement_data],
+            [measurement[1] for measurement in measurement_data],
             color="C0",
             label="Measurements",
+        )
+
+        # Plot the clutter
+        clutter_data = []
+        for measurement_set in all_measurements[:k]:
+            for measurement in measurement_set:
+                if isinstance(measurement, Clutter):
+                    clutter_data.append(
+                        measurement.measurement_model.inverse_function(measurement)
+                    )
+
+        ax.scatter(
+            [clutter[0] for clutter in clutter_data],
+            [clutter[1] for clutter in clutter_data],
+            color="C8",
+            marker="^",
+            alpha=0.4,
+            label="Clutter",
         )
 
         # Plot the particles
