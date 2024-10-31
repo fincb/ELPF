@@ -19,7 +19,7 @@ class ParticleFilter:
         self.measurement_model = measurement_model
         self.likelihood_function = likelihood_function
 
-    def predict(self, particle_state: ParticleState) -> ParticleState:
+    def predict(self, particle_state: ParticleState, time_interval: float) -> ParticleState:
         """
         Predicts the next state of each particle based on the transition model.
 
@@ -27,19 +27,19 @@ class ParticleFilter:
         ----------
         particle_state : ParticleState
             The current state of the particles.
+        time_interval : float
+            The time interval for the transition model.
 
         Returns
         -------
         ParticleState
             The predicted state of the particles after applying the transition model.
         """
-        new_states = [
-            self.transition_model.function(particle) for particle in particle_state.particles
-        ]
+        new_states = self.transition_model.function(particle_state, time_interval)
         return ParticleState(
             [
                 Particle(state, particle.weight)
-                for state, particle in zip(new_states, particle_state.particles)
+                for state, particle in zip(new_states.T, particle_state.particles)
             ]
         )
 
@@ -97,22 +97,39 @@ class BootstrapParticleFilter(ParticleFilter):
         ParticleState
             The updated particle state after incorporating the measurement.
         """
-        new_particles = []
-        for particle in particle_state.particles:
-            # Predict measurement
-            predicted_measurement = self.measurement_model.function(particle, noise=False)
+        # new_particles = []
+        # for particle in particle_state.particles:
+        #     # Predict measurement
+        #     predicted_measurement = self.measurement_model.function(particle, noise=False)
 
-            # Calculate the likelihood using the Gaussian PDF
-            likelihood = self.likelihood_function(
-                measurement, predicted_measurement, self.measurement_model.covar
-            )
+        #     # Calculate the likelihood using the Gaussian PDF
+        #     likelihood = self.likelihood_function(
+        #         measurement.state_vector, predicted_measurement, self.measurement_model.covar
+        #     )
 
-            # Update the particle's weight
-            new_particles.append(Particle(particle.state_vector, particle.weight * likelihood))
+        #     # Update the particle's weight
+        #     new_particles.append(Particle(particle.state_vector, particle.weight * likelihood))
 
-        # Normalise the weights
-        total_weight = np.sum([p.weight for p in new_particles])
+        predicted_measurements = self.measurement_model.function(particle_state, noise=False)
+
+        # Calculate likelihoods of each particle for the measurement
+        likelihoods = self.likelihood_function(
+            measurement.state_vector, predicted_measurements, self.measurement_model.covar
+        )
+
+        weights = np.array([particle.weight for particle in particle_state.particles])
+        new_weights = weights * likelihoods
+
+        # Create new particles with updated weights
+        new_particles = [
+            Particle(particle.state_vector, new_weight)
+            for particle, new_weight in zip(particle_state.particles, new_weights)
+        ]
+
+        # Normalise weights to sum to 1
+        total_weight = np.sum(new_weights)
         if total_weight > 0:
+            # Normalise all weights at once
             for p in new_particles:
                 p.weight /= total_weight
 
@@ -138,29 +155,34 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
         ParticleState
             The updated particle state after weighting based on expected likelihoods.
         """
-        association_probabilities = np.zeros((particle_state.num_particles, len(measurements)))
+        predicted_measurements = self.measurement_model.function(particle_state, noise=False)
+
+        association_probabilities = np.zeros((len(measurements), predicted_measurements.shape[1]))
 
         # Calculate likelihoods of each particle for each measurement
-        for i, particle in enumerate(particle_state.particles):
-            for j, measurement in enumerate(measurements):
-                predicted_measurement = self.measurement_model.function(particle, noise=False)
-                likelihood = self.likelihood_function(
-                    measurement.state_vector, predicted_measurement, self.measurement_model.covar
-                )
-                association_probabilities[i, j] = likelihood
+        for i, measurement in enumerate(measurements):
+            association_probabilities[i, :] = self.likelihood_function(
+                measurement.state_vector, predicted_measurements, self.measurement_model.covar
+            )
 
         # Update particle weights using PDA and normalise
-        new_particles = []
-        for i, particle in enumerate(particle_state.particles):
-            expected_likelihood = np.mean(
-                association_probabilities[i, :]
-            )  # Expected likelihood over measurements
-            new_weight = particle.weight * expected_likelihood
-            new_particles.append(Particle(particle.state_vector, new_weight))
+        weights = np.array([particle.weight for particle in particle_state.particles])
+        # Calculate expected likelihoods for all particles
+        expected_likelihoods = np.mean(association_probabilities, axis=0)
+
+        # Calculate new weights
+        new_weights = weights * expected_likelihoods
+
+        # Create new particles with updated weights
+        new_particles = [
+            Particle(particle.state_vector, new_weight)
+            for particle, new_weight in zip(particle_state.particles, new_weights)
+        ]
 
         # Normalise weights to sum to 1
-        total_weight = sum(p.weight for p in new_particles)
+        total_weight = np.sum(new_weights)
         if total_weight > 0:
+            # Normalise all weights at once
             for p in new_particles:
                 p.weight /= total_weight
 

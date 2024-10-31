@@ -38,22 +38,28 @@ class CartesianToRangeBearingMeasurementModel:
             The measurement in range and bearing as a column vector,
             optionally including measurement noise.
         """
-        state_vector = state.state_vector[self.mapping,]
-        x, y = state_vector[0, 0], state_vector[1, 0]
+        state_vector = state.state_vector[self.mapping, :]
+        x, y = state_vector[0, :], state_vector[1, :]
 
         # Calculate range (rho) and bearing (phi)
         rho = np.sqrt(x**2 + y**2)
         phi = np.arctan2(y, x)
 
         # Ensure phi is wrapped in a Bearing class
-        phi = [Bearing(phi)] if np.isscalar(phi) else [Bearing(i) for i in phi]
+        if np.isscalar(phi):
+            phi = np.array([[Bearing(phi)]])
+        else:
+            phi = np.array([[Bearing(i) for i in phi]])  # Ensure phi is a 2D array
+
+        # Stack rho and phi into a single array
+        measurement = np.vstack((rho, phi.flatten()))  # Use flatten to ensure it's 1D
 
         # Add noise if specified
         if noise:
             noise = np.random.multivariate_normal(np.zeros(2), self.covar).reshape(-1, 1)
-            return np.array([[rho], phi]) + noise
-        else:
-            return np.array([[rho], phi])
+            measurement += noise
+
+        return measurement
 
     def inverse_function(self, state: State) -> np.ndarray:
         """
