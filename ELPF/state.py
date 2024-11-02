@@ -6,7 +6,7 @@ from ELPF.array import StateVector, StateVectors
 
 
 class State:
-    def __init__(self, state_vector: np.ndarray, timestamp: datetime):
+    def __init__(self, state_vector: np.ndarray, timestamp: datetime = None):
         """
         Initialise a State instance with a given state vector.
 
@@ -37,7 +37,7 @@ class GroundTruthState(State):
 
 
 class Particle(State):
-    def __init__(self, state_vector: np.ndarray, weight: float, timestamp: datetime):
+    def __init__(self, state_vector: np.ndarray, weight: float):
         """
         Initialise a Particle instance with a state vector and a weight.
 
@@ -53,7 +53,7 @@ class Particle(State):
         timestamp : datetime, optional
             The timestamp associated with the particle state.
         """
-        super().__init__(StateVector(state_vector), timestamp)
+        super().__init__(StateVector(state_vector))
         self.weight = weight
 
 

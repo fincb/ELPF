@@ -40,7 +40,7 @@ class ParticleFilter:
         new_states = self.transition_model.function(particle_state, time_interval)
         return ParticleState(
             [
-                Particle(state, particle.weight, timestamp=particle.timestamp + time_interval)
+                Particle(state, particle.weight)
                 for state, particle in zip(new_states.T, particle_state.particles)
             ],
             timestamp=particle_state.timestamp + time_interval,
@@ -75,8 +75,7 @@ class ParticleFilter:
             # Create new particles based on the resampled indices
             new_state_vector = particle_state.state_vector[:, index]
             new_particles = [
-                Particle(state_vector, 1.0 / num_particles, particle_state.timestamp)
-                for state_vector in new_state_vector
+                Particle(state_vector, 1.0 / num_particles) for state_vector in new_state_vector
             ]
 
             return ParticleState(new_particles, timestamp=particle_state.timestamp)
@@ -113,7 +112,7 @@ class BootstrapParticleFilter(ParticleFilter):
 
         # Create new particles with updated weights
         new_particles = [
-            Particle(particle.state_vector, new_weight, timestamp=particle.timestamp)
+            Particle(particle.state_vector, new_weight)
             for particle, new_weight in zip(particle_state.particles, new_weights)
         ]
 
@@ -156,7 +155,7 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
 
         # Create new particles with updated weights
         new_particles = [
-            Particle(particle.state_vector, new_weight, timestamp=particle.timestamp)
+            Particle(particle.state_vector, new_weight)
             for particle, new_weight in zip(particle_state.particles, new_weights)
         ]
 
