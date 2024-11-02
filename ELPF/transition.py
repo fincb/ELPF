@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import numpy as np
 from scipy.linalg import block_diag
 
@@ -63,23 +65,23 @@ class CombinedLinearGaussianTransitionModel:
         self.Q_combined = None  # Placeholder for the combined Q matrix
         self.last_time_interval = None  # Store the last time interval used
 
-    def _update_combined_matrices(self, time_interval: float):
+    def _update_combined_matrices(self, dt: float):
         """
         Update the combined state transition and process noise matrices.
 
         Parameters
         ----------
-        time_interval : float
+        dt : float
             The time step for the transition.
         """
         # Retrieve transition and noise matrices from each model
-        F_list, Q_list = zip(*[model.matrices(time_interval) for model in self.transition_models])
+        F_list, Q_list = zip(*[model.matrices(dt) for model in self.transition_models])
 
         # Stack the individual matrices to form combined F and Q matrices
         self.F_combined = block_diag(*F_list)
         self.Q_combined = block_diag(*Q_list)
 
-    def function(self, state: State, time_interval: float, noise: bool = True) -> np.ndarray:
+    def function(self, state: State, time_interval: timedelta, noise: bool = True) -> np.ndarray:
         """
         Predict the next state based on the current state and time step.
 
@@ -100,13 +102,10 @@ class CombinedLinearGaussianTransitionModel:
         np.ndarray
             The predicted next state as a column vector, optionally with process noise.
         """
+        dt = time_interval.total_seconds()
         # Update combined matrices only if the time interval has changed
-        if (
-            time_interval != self.last_time_interval
-            or self.F_combined is None
-            or self.Q_combined is None
-        ):
-            self._update_combined_matrices(time_interval)
+        if dt != self.last_time_interval or self.F_combined is None or self.Q_combined is None:
+            self._update_combined_matrices(dt)
             self.last_time_interval = time_interval
 
         # Calculate next state with optional noise

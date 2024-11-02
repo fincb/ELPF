@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import numpy as np
 
 from ELPF.state import Particle, ParticleState
@@ -19,7 +21,7 @@ class ParticleFilter:
         self.measurement_model = measurement_model
         self.likelihood_function = likelihood_function
 
-    def predict(self, particle_state: ParticleState, time_interval: float) -> ParticleState:
+    def predict(self, particle_state: ParticleState, time_interval: timedelta) -> ParticleState:
         """
         Predicts the next state of each particle based on the transition model.
 
@@ -27,7 +29,7 @@ class ParticleFilter:
         ----------
         particle_state : ParticleState
             The current state of the particles.
-        time_interval : float
+        time_interval : timedelta
             The time interval for the transition model.
 
         Returns
@@ -38,9 +40,10 @@ class ParticleFilter:
         new_states = self.transition_model.function(particle_state, time_interval)
         return ParticleState(
             [
-                Particle(state, particle.weight)
+                Particle(state, particle.weight, timestamp=particle.timestamp + time_interval)
                 for state, particle in zip(new_states.T, particle_state.particles)
-            ]
+            ],
+            timestamp=particle_state.timestamp + time_interval,
         )
 
     def resample(self, particle_state: ParticleState) -> ParticleState:
@@ -72,10 +75,11 @@ class ParticleFilter:
             # Create new particles based on the resampled indices
             new_state_vector = particle_state.state_vector[:, index]
             new_particles = [
-                Particle(state_vector, 1.0 / num_particles) for state_vector in new_state_vector.T
+                Particle(state_vector, 1.0 / num_particles, particle_state.timestamp)
+                for state_vector in new_state_vector
             ]
 
-            return ParticleState(new_particles)
+            return ParticleState(new_particles, timestamp=particle_state.timestamp)
         return particle_state
 
 
@@ -97,19 +101,6 @@ class BootstrapParticleFilter(ParticleFilter):
         ParticleState
             The updated particle state after incorporating the measurement.
         """
-        # new_particles = []
-        # for particle in particle_state.particles:
-        #     # Predict measurement
-        #     predicted_measurement = self.measurement_model.function(particle, noise=False)
-
-        #     # Calculate the likelihood using the Gaussian PDF
-        #     likelihood = self.likelihood_function(
-        #         measurement.state_vector, predicted_measurement, self.measurement_model.covar
-        #     )
-
-        #     # Update the particle's weight
-        #     new_particles.append(Particle(particle.state_vector, particle.weight * likelihood))
-
         predicted_measurements = self.measurement_model.function(particle_state, noise=False)
 
         # Calculate likelihoods of each particle for the measurement
@@ -122,7 +113,7 @@ class BootstrapParticleFilter(ParticleFilter):
 
         # Create new particles with updated weights
         new_particles = [
-            Particle(particle.state_vector, new_weight)
+            Particle(particle.state_vector, new_weight, timestamp=particle.timestamp)
             for particle, new_weight in zip(particle_state.particles, new_weights)
         ]
 
@@ -138,26 +129,15 @@ class BootstrapParticleFilter(ParticleFilter):
 
 class ExpectedLikelihoodParticleFilter(ParticleFilter):
 
-    def update(self, particle_state: ParticleState, measurements: np.ndarray) -> ParticleState:
-        """
-        Updates the weights of each particle based on the association probabilities of
-        measurements.
-
-        Parameters
-        ----------
-        particle_state : ParticleState
-            The current state of the particles.
-        measurements : np.ndarray
-            Array of measurements to be associated with particles.
-
-        Returns
-        -------
-        ParticleState
-            The updated particle state after weighting based on expected likelihoods.
-        """
+    def update(
+        self, particle_state: ParticleState, measurements: np.ndarray, detection_probability: float
+    ) -> ParticleState:
         predicted_measurements = self.measurement_model.function(particle_state, noise=False)
 
-        association_probabilities = np.zeros((len(measurements), predicted_measurements.shape[1]))
+        # Add one extra row for missed detection hypothesis
+        association_probabilities = np.zeros(
+            (len(measurements) + 1, predicted_measurements.shape[1])
+        )
 
         # Calculate likelihoods of each particle for each measurement
         for i, measurement in enumerate(measurements):
@@ -165,26 +145,25 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
                 measurement.state_vector, predicted_measurements, self.measurement_model.covar
             )
 
-        # Update particle weights using PDA and normalise
-        weights = np.array([particle.weight for particle in particle_state.particles])
-        # Calculate expected likelihoods for all particles
-        expected_likelihoods = np.mean(association_probabilities, axis=0)
+        # Set the last row for the missed detection hypothesis
+        association_probabilities[-1, :] = 1 - detection_probability
 
-        # Calculate new weights
+        # Update particle weights using expected likelihoods across measurements and missed
+        # detection
+        weights = np.array([particle.weight for particle in particle_state.particles])
+        expected_likelihoods = np.mean(association_probabilities, axis=0)
         new_weights = weights * expected_likelihoods
 
         # Create new particles with updated weights
         new_particles = [
-            Particle(particle.state_vector, new_weight)
+            Particle(particle.state_vector, new_weight, timestamp=particle.timestamp)
             for particle, new_weight in zip(particle_state.particles, new_weights)
         ]
 
         # Normalise weights to sum to 1
         total_weight = np.sum(new_weights)
         if total_weight > 0:
-            # Normalise all weights at once
             for p in new_particles:
                 p.weight /= total_weight
 
-        # Return resampled ParticleState if needed
-        return self.resample(ParticleState(new_particles))
+        return self.resample(ParticleState(new_particles, timestamp=particle_state.timestamp))

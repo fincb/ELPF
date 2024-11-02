@@ -1,15 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 from scipy.stats import uniform
 from tqdm import tqdm
 
+from ELPF.array import StateVector
 from ELPF.detection import Clutter, TrueDetection
 from ELPF.likelihood import t_pdf
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.particle_filter import ExpectedLikelihoodParticleFilter
 from ELPF.plotting import plot
-from ELPF.state import Particle, ParticleState, State
+from ELPF.state import GroundTruthState, Particle, ParticleState, State
 from ELPF.transition import CombinedLinearGaussianTransitionModel, ConstantVelocity
 
 if __name__ == "__main__":
@@ -20,26 +21,34 @@ if __name__ == "__main__":
     mapping = (0, 2)
 
     # Create the transition model
-    time_interval = 1
-    process_noise = 0.005
+    process_noise = 0.001
     transition_model = CombinedLinearGaussianTransitionModel(
         [ConstantVelocity(process_noise), ConstantVelocity(process_noise)]
     )
 
     # Create the measurement model
-    measurement_noise = np.diag([1, np.deg2rad(0.2)])  # Noise covariance for range and bearing
-    measurement_model = CartesianToRangeBearingMeasurementModel(measurement_noise, mapping)
+    measurement_noise = np.diag([1, np.deg2rad(2)])  # Noise covariance for range and bearing
+    translation_offset = np.array([[0], [0]])
+    measurement_model = CartesianToRangeBearingMeasurementModel(
+        measurement_noise, mapping, translation_offset
+    )
 
     # Number of steps
-    num_steps = 100
+    num_steps = 300
+
+    # Start time
+    start_time = datetime.now().replace(microsecond=0)
+    time_interval = timedelta(seconds=1)
 
     # Generate ground truth
-    truth = [State(np.array([100, 1, 100, 1]))]
+    truth = [GroundTruthState([150, -1, 300, -1], timestamp=start_time)]
     for _ in range(1, num_steps):
-        state = transition_model.function(truth[-1], time_interval)
-        truth.append(State(state))
+        next_state_vector = transition_model.function(truth[-1], time_interval)
+        truth.append(
+            GroundTruthState(next_state_vector, timestamp=truth[-1].timestamp + time_interval)
+        )
 
-    prob_detect = 0.8  # 80% chance of detection
+    prob_detect = 0.5  # 50% chance of detection
 
     # Generate measurements
     all_measurements = []
@@ -48,22 +57,31 @@ if __name__ == "__main__":
 
         # Generate detection with probability prob_detect
         if np.random.rand() <= prob_detect:
-            measurement = measurement_model.function(state, noise=True)
+            measurement = StateVector(measurement_model.function(state, noise=True))
             measurement_set.add(
-                TrueDetection(state_vector=measurement, measurement_model=measurement_model)
+                TrueDetection(
+                    state_vector=measurement,
+                    measurement_model=measurement_model,
+                    timestamp=state.timestamp,
+                )
             )
 
         # Generate clutter with Poisson number of clutter points
         truth_x = state.state_vector[mapping[0]]
         truth_y = state.state_vector[mapping[1]]
         for _ in range(np.random.poisson(5)):
-            x = uniform.rvs(truth_x - 10, 40)
-            y = uniform.rvs(truth_y - 10, 40)
-            clutter = measurement_model.function(State(np.array([x, 0, y, 0])), noise=False)
+            x = uniform.rvs(loc=truth_x - 150, scale=300, size=1)[0]
+            y = uniform.rvs(loc=truth_y - 150, scale=300, size=1)[0]
+            clutter = StateVector(
+                measurement_model.function(
+                    State(StateVector([x, 0, y, 0]), state.timestamp), noise=False
+                )
+            )
             measurement_set.add(
                 Clutter(
                     clutter,
                     measurement_model=measurement_model,
+                    timestamp=state.timestamp,
                 )
             )
 
@@ -72,14 +90,15 @@ if __name__ == "__main__":
     # Define number of particles
     num_particles = 1000
 
-    # Create a prior state
     samples = np.random.multivariate_normal(
-        mean=[100, 1, 100, 1], cov=np.diag([1.5, 0.5, 1.5, 0.5]), size=num_particles
+        mean=[150, -1, 300, -1], cov=np.diag([10, 0.5, 10, 0.5]), size=num_particles
     )
 
     weights = np.ones(num_particles) / num_particles
-    particles = np.array([Particle(sample, weight) for sample, weight in zip(samples, weights)])
-    prior = ParticleState(particles)
+    particles = np.array(
+        [Particle(sample, weight, start_time) for sample, weight in zip(samples, weights)]
+    )
+    prior = ParticleState(particles, timestamp=start_time)
 
     # Create a particle filter
     pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model, t_pdf)
@@ -87,22 +106,15 @@ if __name__ == "__main__":
     # Create a track to store the state estimates
     track = [prior]
 
-    start_time = datetime.now().replace(microsecond=0)
-
     # Perform the particle filtering
     for measurements in tqdm(all_measurements, desc="Filtering"):
         # Predict the new state
         prior = pf.predict(track[-1], time_interval)
 
         # Update the state
-        posterior = pf.update(prior, measurements)
+        posterior = pf.update(prior, measurements, prob_detect)
 
         track.append(posterior)
 
-    end_time = datetime.now().replace(microsecond=0)
-
-    runtime = end_time - start_time
-    print(f"Runtime: {runtime}")
-
     # Plot the results
-    plot(track, truth, all_measurements, mapping, save=False)
+    # plot(track, truth, all_measurements, mapping, save=True)

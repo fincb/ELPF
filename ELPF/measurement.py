@@ -5,7 +5,9 @@ from ELPF.state import State
 
 
 class CartesianToRangeBearingMeasurementModel:
-    def __init__(self, measurement_noise: np.ndarray, mapping: tuple):
+    def __init__(
+        self, measurement_noise: np.ndarray, mapping: tuple, translation_offset: np.ndarray = None
+    ):
         """
         Initializes the Cartesian to Range-Bearing Measurement Model.
 
@@ -17,9 +19,13 @@ class CartesianToRangeBearingMeasurementModel:
         mapping : tuple
             A tuple indicating which elements of the state vector to use
             for the measurement (e.g., positions in the state vector).
+        translation_offset : np.ndarray, optional
+            An offset to add to the state vector before converting to range and bearing
+            (default is None).
         """
         self.measurement_noise = measurement_noise  # Measurement noise covariance
         self.mapping = mapping  # Mapping to the measurement space
+        self.translation_offset = translation_offset
 
     def function(self, state: State, noise: bool = True) -> np.ndarray:
         """
@@ -38,7 +44,7 @@ class CartesianToRangeBearingMeasurementModel:
             The measurement in range and bearing as a column vector,
             optionally including measurement noise.
         """
-        state_vector = state.state_vector[self.mapping, :]
+        state_vector = state.state_vector[self.mapping, :] - self.translation_offset
         x, y = state_vector[0, :], state_vector[1, :]
 
         # Calculate range (rho) and bearing (phi)
@@ -46,13 +52,10 @@ class CartesianToRangeBearingMeasurementModel:
         phi = np.arctan2(y, x)
 
         # Ensure phi is wrapped in a Bearing class
-        if np.isscalar(phi):
-            phi = np.array([[Bearing(phi)]])
-        else:
-            phi = np.array([[Bearing(i) for i in phi]])  # Ensure phi is a 2D array
+        phi = np.array([Bearing(i) for i in phi])  # Ensure phi is a 2D array
 
         # Stack rho and phi into a single array
-        measurement = np.vstack((rho, phi.flatten()))  # Use flatten to ensure it's 1D
+        measurement = np.vstack((rho, phi))
 
         # Add noise if specified
         if noise:
@@ -79,7 +82,7 @@ class CartesianToRangeBearingMeasurementModel:
         rho, phi = state_vector[0, 0], state_vector[1, 0]
         x = rho * np.cos(phi)
         y = rho * np.sin(phi)
-        return np.array([[x], [y]])
+        return np.array([[x], [y]]) + self.translation_offset
 
     @property
     def covar(self) -> np.ndarray:

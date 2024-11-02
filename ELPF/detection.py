@@ -1,8 +1,9 @@
 class Detection:
 
-    def __init__(self, state_vector, measurement_model):
+    def __init__(self, state_vector, measurement_model, timestamp=None):
         self.state_vector = state_vector
         self.measurement_model = measurement_model
+        self.timestamp = timestamp
 
 
 class TrueDetection(Detection):
