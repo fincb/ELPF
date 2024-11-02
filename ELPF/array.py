@@ -3,8 +3,7 @@ This module defines matrix wrapper classes for use in state estimation, inspired
 library.
 
 Stone Soup is an open-source framework for state estimation and tracking.
-These classes were adapted and extended from ideas in Stone Soup to facilitate matrix manipulations
-with additional type-checking and shape enforcement.
+These classes were adapted from in Stone Soup to facilitate matrix manipulations.
 
 Classes:
     Matrix: A general wrapper for numpy arrays.

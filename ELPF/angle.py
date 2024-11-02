@@ -1,3 +1,20 @@
+"""
+This module defines classes to facilitate operations on angles, including addition, subtraction,
+and trigonometric functions, while ensuring that angles remain within a valid range.
+
+This module is inspired by the Stone Soup library, which is an open-source framework
+for state estimation and tracking.
+
+Classes:
+    Angle: A class for representing angles with support for arithmetic operations,
+           trigonometric functions, and circular mean calculation.
+    Bearing: A subclass of Angle that enforces a specific range for bearing angles
+             and uses the same arithmetic operations.
+
+References:
+    Stone Soup Library: https://stonesoup.readthedocs.io/
+"""
+
 from math import ceil, floor, trunc
 from numbers import Real
 

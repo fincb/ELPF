@@ -1,3 +1,33 @@
+"""
+This module defines classes for representing states in a state estimation framework,
+including ground truth states, particles, and collections of particles. The classes are designed
+to facilitate the management and manipulation of state information in particle filtering.
+
+This module is inspired by the Stone Soup library, which is an open-source framework
+for state estimation and tracking.
+
+Classes:
+    State: A base class for representing the state of a system, including a state vector
+           and an optional timestamp.
+    GroundTruthState: A subclass of State that represents the true state of the system
+                      at a specific timestamp, ensuring that the state vector is a
+                      StateVector.
+    Particle: A subclass of State that represents a single particle in a particle filter,
+              storing a state vector and an associated weight that indicates its importance.
+    ParticleState: A subclass of State that represents the collective state of multiple
+                   particles, providing methods to access the concatenated state vector,
+                   weights, mean state, and the number of particles.
+
+Usage:
+    The State class serves as a foundation for other state representations. The GroundTruthState
+    class is used to track the true state of the system, while the Particle class is essential
+    for the particle filter algorithm. The ParticleState class encapsulates multiple particles,
+    facilitating operations that require aggregate information.
+
+References:
+    Stone Soup Library: https://stonesoup.readthedocs.io/
+"""
+
 from datetime import datetime
 
 import numpy as np
