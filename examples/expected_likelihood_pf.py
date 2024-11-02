@@ -39,13 +39,17 @@ if __name__ == "__main__":
     # Start time
     start_time = datetime.now().replace(microsecond=0)
     time_interval = timedelta(seconds=1)
+    timesteps = [start_time]
 
     # Generate ground truth
     truth = [GroundTruthState([150, -1, 300, -1], timestamp=start_time)]
     for _ in range(1, num_steps):
-        next_state_vector = transition_model.function(truth[-1], time_interval)
+        timesteps.append(start_time + time_interval)
         truth.append(
-            GroundTruthState(next_state_vector, timestamp=truth[-1].timestamp + time_interval)
+            GroundTruthState(
+                transition_model.function(truth[-1], time_interval),
+                timestamp=timesteps[-1],
+            )
         )
 
     prob_detect = 0.5  # 50% chance of detection
@@ -90,14 +94,12 @@ if __name__ == "__main__":
     # Define number of particles
     num_particles = 1000
 
+    # Create prior state
     samples = np.random.multivariate_normal(
         mean=[150, -1, 300, -1], cov=np.diag([10, 0.5, 10, 0.5]), size=num_particles
     )
-
     weights = np.ones(num_particles) / num_particles
-    particles = np.array(
-        [Particle(sample, weight, start_time) for sample, weight in zip(samples, weights)]
-    )
+    particles = np.array([Particle(sample, weight) for sample, weight in zip(samples, weights)])
     prior = ParticleState(particles, timestamp=start_time)
 
     # Create a particle filter
