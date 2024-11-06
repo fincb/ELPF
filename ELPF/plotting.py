@@ -774,3 +774,6 @@ class AnimatedPlot:
 
     def show(self):
         self.fig.show()
+
+    def save(self, filename='elpf.html'):
+        self.fig.write_html(filename)
