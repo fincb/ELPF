@@ -79,9 +79,7 @@ def t_pdf(
     df = observed_state.size
     d = observed_state.shape[0]
 
-    # Ensure covariance is a 2D matrix and compute its determinant and inverse
-    if covar.ndim == 1:
-        covar = np.diag(covar)
+    # Compute covariance determinant and inverse
     covar_inv = np.linalg.inv(covar)
     covar_det = np.linalg.det(covar)
 
@@ -89,7 +87,10 @@ def t_pdf(
     diffs = predicted_states - observed_state
 
     # Calculate the Mahalanobis distance for each difference in a vectorized way
-    mahalanobis_dists = np.einsum("ij,ji->i", diffs.T @ covar_inv, diffs)
+    if covar.shape[0] == 1:
+        mahalanobis_dists = np.sum(diffs.T @ covar_inv * diffs, axis=1)
+    else:
+        mahalanobis_dists = np.einsum("ij,ji->i", diffs.T @ covar_inv, diffs)
 
     # Compute the normalizing constants for the t-distribution
     norm_const = np.exp(gammaln((df + d) / 2) - gammaln(df / 2))

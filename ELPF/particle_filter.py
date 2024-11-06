@@ -129,8 +129,35 @@ class BootstrapParticleFilter(ParticleFilter):
 class ExpectedLikelihoodParticleFilter(ParticleFilter):
 
     def update(
-        self, particle_state: ParticleState, measurements: np.ndarray, detection_probability: float
+        self,
+        particle_state: ParticleState,
+        measurements: np.ndarray,
+        detection_probability: float,
+        clutter_spatial_density: float,
     ) -> ParticleState:
+        """
+        Updates the particle state based on multiple measurements, incorporating the likelihoods
+        adjusted for detection probability and clutter spatial density, and handling missed
+        detection hypotheses.
+
+        Parameters
+        ----------
+        particle_state : ParticleState
+            The current state of the particles, including their weights and state vectors.
+        measurements : np.ndarray
+            An array of observed measurements to compare against the predicted measurements from
+            the particles.
+        detection_probability : float
+            The probability of a true detection occurring for each measurement.
+        clutter_spatial_density : float
+            The spatial density of clutter, used to adjust the likelihoods for clutter.
+
+        Returns
+        -------
+        ParticleState
+            The updated particle state after incorporating the measurements and adjusting for
+            clutter and missed detection.
+        """
         predicted_measurements = self.measurement_model.function(particle_state, noise=False)
 
         # Add one extra row for missed detection hypothesis
@@ -138,10 +165,13 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
             (len(measurements) + 1, predicted_measurements.shape[1])
         )
 
-        # Calculate likelihoods of each particle for each measurement
+        # Calculate likelihoods of each particle for each measurement and adjust for clutter
         for i, measurement in enumerate(measurements):
-            association_probabilities[i, :] = self.likelihood_function(
+            likelihood = self.likelihood_function(
                 measurement.state_vector, predicted_measurements, self.measurement_model.covar
+            )
+            association_probabilities[i, :] = (
+                likelihood * detection_probability / clutter_spatial_density
             )
 
         # Set the last row for the missed detection hypothesis

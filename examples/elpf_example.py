@@ -52,6 +52,24 @@ if __name__ == "__main__":
             )
         )
 
+    # Clutter parameters
+    clutter_rate = 2
+    clutter_scale = 300
+    x_min, x_max = min([state.state_vector[mapping[0]] for state in truth]), max(
+        [state.state_vector[mapping[0]] for state in truth]
+    )
+    y_min, y_max = min([state.state_vector[mapping[1]] for state in truth]), max(
+        [state.state_vector[mapping[1]] for state in truth]
+    )
+    clutter_area = [
+        [x_min - clutter_scale / 2, x_max + clutter_scale / 2],
+        [y_min - clutter_scale / 2, y_max + clutter_scale / 2],
+    ]
+    surveillance_area = (clutter_area[0][1] - clutter_area[0][0]) * (
+        clutter_area[1][1] - clutter_area[1][0]
+    )
+    clutter_spatial_density = clutter_rate / surveillance_area
+
     prob_detect = 0.5  # 50% chance of detection
 
     # Generate measurements
@@ -73,9 +91,9 @@ if __name__ == "__main__":
         # Generate clutter with Poisson number of clutter points
         truth_x = state.state_vector[mapping[0]]
         truth_y = state.state_vector[mapping[1]]
-        for _ in range(np.random.poisson(5)):
-            x = uniform.rvs(loc=truth_x - 150, scale=300, size=1)[0]
-            y = uniform.rvs(loc=truth_y - 150, scale=300, size=1)[0]
+        for _ in range(np.random.poisson(clutter_rate)):
+            x = uniform.rvs(loc=truth_x - clutter_scale / 2, scale=clutter_scale, size=1)[0]
+            y = uniform.rvs(loc=truth_y - clutter_scale / 2, scale=clutter_scale, size=1)[0]
             clutter = StateVector(
                 measurement_model.function(
                     State(StateVector([x, 0, y, 0]), state.timestamp), noise=False
@@ -114,7 +132,7 @@ if __name__ == "__main__":
         prior = pf.predict(track[-1], time_interval)
 
         # Update the state
-        posterior = pf.update(prior, measurements, prob_detect)
+        posterior = pf.update(prior, measurements, prob_detect, clutter_spatial_density)
 
         track.append(posterior)
 
@@ -124,4 +142,3 @@ if __name__ == "__main__":
     plotter.plot_measurements(all_measurements)
     plotter.plot_tracks([track], mapping=mapping, plot_particles=True)
     plotter.show()
-    plotter.save()
