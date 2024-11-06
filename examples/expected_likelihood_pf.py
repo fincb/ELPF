@@ -4,12 +4,12 @@ import numpy as np
 from scipy.stats import uniform
 from tqdm import tqdm
 
-from ELPF.array import StateVector
+from ELPF.array_type import StateVector
 from ELPF.detection import Clutter, TrueDetection
 from ELPF.likelihood import t_pdf
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.particle_filter import ExpectedLikelihoodParticleFilter
-from ELPF.plotting import plot
+from ELPF.plotting import AnimatedPlot
 from ELPF.state import GroundTruthState, Particle, ParticleState, State
 from ELPF.transition import CombinedLinearGaussianTransitionModel, ConstantVelocity
 
@@ -43,8 +43,8 @@ if __name__ == "__main__":
 
     # Generate ground truth
     truth = [GroundTruthState([150, -1, 300, -1], timestamp=start_time)]
-    for _ in range(1, num_steps):
-        timesteps.append(start_time + time_interval)
+    for i in range(1, num_steps):
+        timesteps.append(start_time + i * time_interval)
         truth.append(
             GroundTruthState(
                 transition_model.function(truth[-1], time_interval),
@@ -119,4 +119,8 @@ if __name__ == "__main__":
         track.append(posterior)
 
     # Plot the results
-    # plot(track, truth, all_measurements, mapping, save=True)
+    plotter = AnimatedPlot(timesteps, tail_length=1)
+    plotter.plot_truths([truth], mapping=mapping)
+    plotter.plot_measurements(all_measurements)
+    plotter.plot_tracks([track], mapping=mapping, plot_particles=True)
+    plotter.show()
