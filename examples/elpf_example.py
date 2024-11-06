@@ -124,3 +124,4 @@ if __name__ == "__main__":
     plotter.plot_measurements(all_measurements)
     plotter.plot_tracks([track], mapping=mapping, plot_particles=True)
     plotter.show()
+    plotter.save()
