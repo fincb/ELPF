@@ -32,7 +32,7 @@ from datetime import datetime
 
 import numpy as np
 
-from ELPF.array import StateVector, StateVectors
+from ELPF.array_type import StateVector, StateVectors
 
 
 class State:
