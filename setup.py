@@ -10,11 +10,11 @@ setup(
         "matplotlib",
         "seaborn",
         "tqdm",
-        # Add any other dependencies your project has
+        'plotly'
     ],
-    author="Your Name",
-    author_email="your.email@example.com",
-    description="Expected Likelihood Particle Filter for state estimation.",
+    author="Joshua J Wakefield",
+    author_email="sgjwakef@liverpool.ac.uk",
+    description="Expected Likelihood Particle Filter for state estimationin cluttered environments.",
     license="MIT",
     keywords="particle filter state estimation",
 )
