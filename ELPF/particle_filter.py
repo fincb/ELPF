@@ -1,11 +1,15 @@
 from datetime import timedelta
+from itertools import product
 
 import numpy as np
+from scipy.stats import multivariate_t
 
+from ELPF.detection import MissedDetection
+from ELPF.hypothesis import JointHypothesis, SingleHypothesis
 from ELPF.state import Particle, ParticleState
 
 
-class ParticleFilter:
+class _ParticleFilter:
     def __init__(self, transition_model, measurement_model, likelihood_function):
         """
         Initialises the Particle Filter with a given transition and measurement model.
@@ -82,7 +86,7 @@ class ParticleFilter:
         return particle_state
 
 
-class BootstrapParticleFilter(ParticleFilter):
+class BootstrapParticleFilter(_ParticleFilter):
 
     def update(self, particle_state: ParticleState, measurement: np.ndarray) -> ParticleState:
         """
@@ -126,7 +130,12 @@ class BootstrapParticleFilter(ParticleFilter):
         return self.resample(ParticleState(new_particles))
 
 
-class ExpectedLikelihoodParticleFilter(ParticleFilter):
+class ExpectedLikelihoodParticleFilter(_ParticleFilter):
+    """
+    Particle Filter that calculates and updates particle weights based on expected likelihoods
+    of multiple measurements. This filter handles missed detections, clutter, and measurement
+    probabilities in a multi-hypothesis framework.
+    """
 
     def update(
         self,
@@ -136,63 +145,252 @@ class ExpectedLikelihoodParticleFilter(ParticleFilter):
         clutter_spatial_density: float,
     ) -> ParticleState:
         """
-        Updates the particle state based on multiple measurements, incorporating the likelihoods
-        adjusted for detection probability and clutter spatial density, and handling missed
-        detection hypotheses.
+        Updates the weights of particles based on the likelihoods of observed measurements.
 
-        Parameters
+        Parameters:
         ----------
         particle_state : ParticleState
-            The current state of the particles, including their weights and state vectors.
+            The current state of particles to be updated.
         measurements : np.ndarray
-            An array of observed measurements to compare against the predicted measurements from
-            the particles.
+            Array of observed measurements.
         detection_probability : float
-            The probability of a true detection occurring for each measurement.
+            Probability of detecting the target.
         clutter_spatial_density : float
-            The spatial density of clutter, used to adjust the likelihoods for clutter.
+            Density of clutter in the measurement space.
 
-        Returns
+        Returns:
         -------
         ParticleState
-            The updated particle state after incorporating the measurements and adjusting for
-            clutter and missed detection.
+            The updated particle state after resampling based on the new weights.
         """
-        predicted_measurements = self.measurement_model.function(particle_state, noise=False)
-
-        # Add one extra row for missed detection hypothesis
-        association_probabilities = np.zeros(
-            (len(measurements) + 1, predicted_measurements.shape[1])
+        # Generate hypotheses for each particle with each measurement and missed detection
+        hypotheses = self._generate_single_hypotheses(
+            particle_state, measurements, detection_probability, clutter_spatial_density
         )
 
-        # Calculate likelihoods of each particle for each measurement and adjust for clutter
-        for i, measurement in enumerate(measurements):
-            likelihood = self.likelihood_function(
-                measurement.state_vector, predicted_measurements, self.measurement_model.covar
-            )
-            association_probabilities[i, :] = (
-                likelihood * detection_probability / clutter_spatial_density
-            )
+        return self._update_weights(particle_state, hypotheses)
 
-        # Set the last row for the missed detection hypothesis
-        association_probabilities[-1, :] = 1 - detection_probability
+    def _update_weights(self, particle_state, hypotheses):
+        """
+        Updates particle weights based on calculated likelihoods from hypotheses and
+        normalises them.
 
-        # Update particle weights using expected likelihoods across measurements and missed
-        # detection
+        This method calculates the new weights by averaging the likelihoods
+        across all hypotheses for each particle and then normalises the weights to ensure
+        they sum to one. Finally, it generates a new set of particles based on the updated
+        weights and performs resampling.
+
+        Parameters:
+        ----------
+        particle_state : ParticleState
+            The current state of particles to be updated, containing individual particle
+            weights and state vectors.
+        hypotheses : list of SingleHypothesis
+            List of hypotheses representing the likelihood of each measurement for each particle.
+
+        Returns:
+        -------
+        ParticleState
+            The updated particle state after resampling based on the new weights.
+        """
+        # Extract particle weights from the particle state
         weights = np.array([particle.weight for particle in particle_state.particles])
-        expected_likelihoods = np.mean(association_probabilities, axis=0)
-        new_weights = weights * expected_likelihoods
 
-        # Create new particles with updated weights
+        # Compute likelihoods for each hypothesis (array of probabilities for each particle)
+        likelihoods = np.array([h.probability for h in hypotheses])
+
+        # Update weights based on mean likelihood across hypotheses and normalize
+        new_weights = weights * likelihoods.mean(axis=0)
+        new_weights /= np.sum(new_weights)  # Normalise to ensure weights sum to 1
+
+        # Generate new particles with updated weights
         new_particles = [
-            Particle(particle.state_vector, new_weight)
-            for particle, new_weight in zip(particle_state.particles, new_weights)
+            Particle(particle.state_vector, weight)
+            for particle, weight in zip(particle_state.particles, new_weights)
         ]
 
-        # Normalise weights to sum to 1
-        total_weight = np.sum(new_weights)
-        if total_weight > 0:
-            for p in new_particles:
-                p.weight /= total_weight
-
+        # Resample particles based on updated weights and return new particle state
         return self.resample(ParticleState(new_particles, timestamp=particle_state.timestamp))
+
+    def _generate_single_hypotheses(
+        self, particle_state, measurements, detection_probability, clutter_spatial_density
+    ):
+        """
+        Generates single hypotheses for each particle with respect to each measurement
+        and missed detection hypothesis.
+
+        Parameters:
+        ----------
+        particle_state : ParticleState
+            The state of the particles from which measurement predictions are generated.
+        measurements : np.ndarray
+            Observed measurements to be considered in hypothesis generation.
+        detection_probability : float
+            Probability of detecting the target.
+        clutter_spatial_density : float
+            Density of clutter (false alarms) in the measurement space.
+
+        Returns:
+        -------
+        list of SingleHypothesis
+            Hypotheses for each particle measurement combination, including missed detections.
+        """
+        # Predict measurements for all particles to compare to actual measurements
+        predicted_measurements = self.measurement_model.function(particle_state, noise=False)
+        covar = self.measurement_model.covar  # Measurement model covariance
+
+        # Create a hypothesis for missed detection with a uniform probability across particles
+        missed_detection_prob = np.full(
+            (len(particle_state.particles),), 1 - detection_probability
+        )
+        hypotheses = [
+            SingleHypothesis(
+                particle_state,
+                MissedDetection(),
+                missed_detection_prob,
+                predicted_measurements,
+            )
+        ]
+
+        # Create a hypothesis for each particle-measurement pair
+        for measurement in measurements:
+            # Compute differences between predicted and actual measurements for each particle
+            diffs = predicted_measurements - measurement.state_vector
+
+            # Calculate likelihood (probability) of this measurement for each particle
+            probability = (
+                multivariate_t.pdf(diffs.T, shape=covar, df=covar.ndim)
+                * detection_probability
+                / clutter_spatial_density
+            )
+
+            # Append hypothesis with computed probability and predicted measurement
+            hypotheses.append(
+                SingleHypothesis(particle_state, measurement, probability, predicted_measurements)
+            )
+
+        return hypotheses
+
+
+class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilter):
+    """
+    Particle Filter for multiple targets, using expected likelihoods to update particle states.
+    This filter considers multiple hypotheses, handling missed detections, clutter, and
+    measurement probabilities in a multi-target environment.
+    """
+
+    def update(
+        self, particle_states, measurements, detection_probability, clutter_spatial_density
+    ):
+        """
+        Updates particle states based on measurements, calculating expected likelihoods for
+        each particle-measurement combination.
+
+        Parameters:
+        ----------
+        particle_states : list of ParticleState
+            Current states of all particles for each target.
+        measurements : np.ndarray
+            Array of observed measurements.
+        detection_probability : float
+            Probability of detecting a target.
+        clutter_spatial_density : float
+            Density of clutter (false alarms) in the measurement space.
+
+        Returns:
+        -------
+        list of ParticleState
+            Updated states for each target after resampling based on new weights.
+        """
+
+        # Generate hypotheses for each particle state with each measurement and missed detection
+        hypotheses = {
+            particle_state: self._generate_single_hypotheses(
+                particle_state, measurements, detection_probability, clutter_spatial_density
+            )
+            for particle_state in particle_states
+        }
+
+        # Generate valid joint hypotheses across all particle states
+        joint_hypotheses = self._generate_joint_hypotheses(hypotheses)
+
+        # Recalculate probabilities for single hypotheses based on joint hypotheses
+        self._redistribute_probabilities(hypotheses, joint_hypotheses)
+
+        # Update weights for each particle state based on the new probabilities
+        return [
+            self._update_weights(particle_state, hypotheses[particle_state])
+            for particle_state in particle_states
+        ]
+
+    def _generate_joint_hypotheses(self, hypotheses):
+        """
+        Generates valid joint hypotheses from single hypotheses, ensuring each measurement
+        is assigned to one hypothesis only.
+
+        Parameters:
+        ----------
+        hypotheses : dict
+            Mapping of particle states to their respective single hypotheses.
+
+        Returns:
+        -------
+        list of JointHypothesis
+            Valid joint hypotheses across all particle states.
+        """
+
+        # Create joint hypotheses by taking the Cartesian product of single hypotheses
+        joint_hypotheses = list(product(*hypotheses.values()))
+        valid_joint_hypotheses = []
+
+        for joint_hypothesis in joint_hypotheses:
+            measurements_assigned = set()
+            valid = True
+
+            for hypothesis in joint_hypothesis:
+                measurement = hypothesis.measurement
+                if isinstance(measurement, MissedDetection):
+                    continue
+                if measurement in measurements_assigned:
+                    valid = False  # Invalidate if a measurement is assigned more than once
+                    break
+                measurements_assigned.add(measurement)
+
+            if valid:
+                valid_joint_hypotheses.append(JointHypothesis(joint_hypothesis))
+
+        # Normalise joint hypotheses probabilities
+        total_prob = np.sum([np.sum(jh.probability) for jh in valid_joint_hypotheses])
+        for jh in valid_joint_hypotheses:
+            jh.probability /= total_prob
+
+        return valid_joint_hypotheses
+
+    def _redistribute_probabilities(self, hypotheses, joint_hypotheses):
+        """
+        Recalculates and assigns probabilities to single hypotheses based on the contributions
+        from valid joint hypotheses.
+
+        Parameters:
+        ----------
+        hypotheses : dict
+            Mapping of particle states to their respective single hypotheses.
+        joint_hypotheses : list of JointHypothesis
+            Valid joint hypotheses containing combinations of single hypotheses.
+        """
+
+        # Iterate over all hypotheses for each particle state to update their probabilities
+        for single_hypotheses in hypotheses.values():
+            for single_hypothesis in single_hypotheses:
+                new_prob = 0.0
+
+                # Accumulate contributions from joint hypotheses
+                for joint_hypothesis in joint_hypotheses:
+                    # Check if the single hypothesis is part of the current joint hypothesis
+                    for jh in joint_hypothesis.hypotheses:
+                        if jh == single_hypothesis:
+                            new_prob += joint_hypothesis.probability  # Add contribution
+                            break
+
+                # Assign the recalculated probability to the single hypothesis
+                single_hypothesis.probability = new_prob
