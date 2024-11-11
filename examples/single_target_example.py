@@ -114,13 +114,13 @@ if __name__ == "__main__":
 
     # Create prior state
     samples = np.random.multivariate_normal(
-        mean=[150, -1, 300, -1], cov=np.diag([10, 0.5, 10, 0.5]), size=num_particles
+        mean=truth[0].state_vector.flatten(), cov=np.diag([1.5, 0.5, 1.5, 0.5]), size=num_particles
     )
     weights = np.ones(num_particles) / num_particles
     particles = np.array([Particle(sample, weight) for sample, weight in zip(samples, weights)])
     prior = ParticleState(particles, timestamp=start_time)
 
-    # Create a particle filter
+    # Create the ELPF
     pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model, t_pdf)
 
     # Create a track to store the state estimates
