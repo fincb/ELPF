@@ -539,7 +539,7 @@ class AnimatedPlot:
 
         # Update track colours
         for i, _ in enumerate(tracks):
-            track_kwargs.update({"line": dict(color=self.colorway[(i + 2) % len(self.colorway)])})
+            track_kwargs.update({"line": dict(color=self.colorway[i % len(self.colorway)])})
             self.fig.add_trace(go.Scatter(track_kwargs))
 
         for frame in self.fig.frames:
@@ -587,7 +587,7 @@ class AnimatedPlot:
             self.fig.add_trace(go.Scatter(particle_kwargs))
             particle_kwargs["showlegend"] = False
             for i, track in enumerate(data):
-                particle_kwargs["marker"]["color"] = self.colorway[(i + 2) % len(self.colorway)]
+                particle_kwargs["marker"]["color"] = self.colorway[i % len(self.colorway)]
                 self.fig.add_trace(go.Scatter(particle_kwargs))
             self._plot_particles(tracks, mapping, resize)
 
