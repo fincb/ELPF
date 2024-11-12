@@ -2,7 +2,6 @@ from datetime import timedelta
 from itertools import product
 
 import numpy as np
-from scipy.stats import multivariate_t
 
 from ELPF.detection import MissedDetection
 from ELPF.hypothesis import JointHypothesis, SingleHypothesis
@@ -143,11 +142,12 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         measurements: np.ndarray,
         detection_probability: float,
         clutter_spatial_density: float,
+        likelihood_func_args,
     ) -> ParticleState:
         """
         Updates the weights of particles based on the likelihoods of observed measurements.
 
-        Parameters:
+        Parameters
         ----------
         particle_state : ParticleState
             The current state of particles to be updated.
@@ -158,14 +158,18 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         clutter_spatial_density : float
             Density of clutter in the measurement space.
 
-        Returns:
+        Returns
         -------
         ParticleState
             The updated particle state after resampling based on the new weights.
         """
         # Generate hypotheses for each particle with each measurement and missed detection
         hypotheses = self._generate_single_hypotheses(
-            particle_state, measurements, detection_probability, clutter_spatial_density
+            particle_state,
+            measurements,
+            detection_probability,
+            clutter_spatial_density,
+            likelihood_func_args,
         )
 
         return self._update_weights(particle_state, hypotheses)
@@ -180,7 +184,7 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         they sum to one. Finally, it generates a new set of particles based on the updated
         weights and performs resampling.
 
-        Parameters:
+        Parameters
         ----------
         particle_state : ParticleState
             The current state of particles to be updated, containing individual particle
@@ -188,7 +192,7 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         hypotheses : list of SingleHypothesis
             List of hypotheses representing the likelihood of each measurement for each particle.
 
-        Returns:
+        Returns
         -------
         ParticleState
             The updated particle state after resampling based on the new weights.
@@ -213,13 +217,18 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         return self.resample(ParticleState(new_particles, timestamp=particle_state.timestamp))
 
     def _generate_single_hypotheses(
-        self, particle_state, measurements, detection_probability, clutter_spatial_density
+        self,
+        particle_state,
+        measurements,
+        detection_probability,
+        clutter_spatial_density,
+        likelihood_func_args,
     ):
         """
         Generates single hypotheses for each particle with respect to each measurement
         and missed detection hypothesis.
 
-        Parameters:
+        Parameters
         ----------
         particle_state : ParticleState
             The state of the particles from which measurement predictions are generated.
@@ -230,14 +239,13 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
         clutter_spatial_density : float
             Density of clutter (false alarms) in the measurement space.
 
-        Returns:
+        Returns
         -------
         list of SingleHypothesis
             Hypotheses for each particle measurement combination, including missed detections.
         """
         # Predict measurements for all particles to compare to actual measurements
         predicted_measurements = self.measurement_model.function(particle_state, noise=False)
-        covar = self.measurement_model.covar  # Measurement model covariance
 
         # Create a hypothesis for missed detection with a uniform probability across particles
         missed_detection_prob = np.full(
@@ -259,7 +267,7 @@ class ExpectedLikelihoodParticleFilter(_ParticleFilter):
 
             # Calculate likelihood (probability) of this measurement for each particle
             probability = (
-                multivariate_t.pdf(diffs.T, shape=covar, df=covar.ndim)
+                self.likelihood_function(diffs.T, **likelihood_func_args)
                 * detection_probability
                 / clutter_spatial_density
             )
@@ -280,13 +288,18 @@ class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilt
     """
 
     def update(
-        self, particle_states, measurements, detection_probability, clutter_spatial_density
+        self,
+        particle_states,
+        measurements,
+        detection_probability,
+        clutter_spatial_density,
+        likelihood_func_args,
     ):
         """
         Updates particle states based on measurements, calculating expected likelihoods for
         each particle-measurement combination.
 
-        Parameters:
+        Parameters
         ----------
         particle_states : list of ParticleState
             Current states of all particles for each target.
@@ -297,7 +310,7 @@ class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilt
         clutter_spatial_density : float
             Density of clutter (false alarms) in the measurement space.
 
-        Returns:
+        Returns
         -------
         list of ParticleState
             Updated states for each target after resampling based on new weights.
@@ -306,7 +319,11 @@ class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilt
         # Generate hypotheses for each particle state with each measurement and missed detection
         hypotheses = {
             particle_state: self._generate_single_hypotheses(
-                particle_state, measurements, detection_probability, clutter_spatial_density
+                particle_state,
+                measurements,
+                detection_probability,
+                clutter_spatial_density,
+                likelihood_func_args,
             )
             for particle_state in particle_states
         }
@@ -328,12 +345,12 @@ class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilt
         Generates valid joint hypotheses from single hypotheses, ensuring each measurement
         is assigned to one hypothesis only.
 
-        Parameters:
+        Parameters
         ----------
         hypotheses : dict
             Mapping of particle states to their respective single hypotheses.
 
-        Returns:
+        Returns
         -------
         list of JointHypothesis
             Valid joint hypotheses across all particle states.
@@ -371,7 +388,7 @@ class MultiTargetExpectedLikelihoodParticleFilter(ExpectedLikelihoodParticleFilt
         Recalculates and assigns probabilities to single hypotheses based on the contributions
         from valid joint hypotheses.
 
-        Parameters:
+        Parameters
         ----------
         hypotheses : dict
             Mapping of particle states to their respective single hypotheses.

@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
 
 import numpy as np
-from scipy.stats import uniform
+from scipy.stats import multivariate_normal, multivariate_t, uniform
 from tqdm import tqdm
 
 from ELPF.array_type import StateVector
 from ELPF.detection import Clutter, TrueDetection
-from ELPF.likelihood import t_pdf
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.particle_filter import MultiTargetExpectedLikelihoodParticleFilter
 from ELPF.plotting import AnimatedPlot
@@ -20,8 +19,8 @@ if __name__ == "__main__":
     # Define the mapping between the state vector and the measurement space
     mapping = (0, 2)
 
-    # Create the transition model
-    process_noise = 0.001
+    # Create the ground truth transition model
+    process_noise = 0.0
     transition_model = CombinedLinearGaussianTransitionModel(
         [ConstantVelocity(process_noise), ConstantVelocity(process_noise)]
     )
@@ -34,7 +33,7 @@ if __name__ == "__main__":
     )
 
     # Number of steps
-    num_steps = 300
+    num_steps = 100
 
     # Start time
     start_time = datetime.now().replace(microsecond=0)
@@ -43,8 +42,10 @@ if __name__ == "__main__":
 
     # Generate ground truth
     truths = [
-        [GroundTruthState([-220, 1, 200, 1], timestamp=start_time)],
-        [GroundTruthState([-200, 1, 500, -1], timestamp=start_time)],
+        [GroundTruthState([-10, 0.25, -10, 0.50], timestamp=start_time)],
+        [GroundTruthState([-10, 0.25, 20, -0.50], timestamp=start_time)],
+        [GroundTruthState([10, -0.25, 20, -0.50], timestamp=start_time)],
+        # [GroundTruthState([10, -0.25, -10, 0.50], timestamp=start_time)],
     ]
     for i in range(1, num_steps):
         for truth in truths:
@@ -58,21 +59,13 @@ if __name__ == "__main__":
 
     # Clutter parameters
     clutter_rate = 2
-    clutter_scale = 300
-    x_min = min([min([state.state_vector[mapping[0]] for state in truth]) for truth in truths])
-    x_max = max([max([state.state_vector[mapping[0]] for state in truth]) for truth in truths])
-    y_min = min([min([state.state_vector[mapping[1]] for state in truth]) for truth in truths])
-    y_max = max([max([state.state_vector[mapping[1]] for state in truth]) for truth in truths])
-    clutter_area = [
-        [x_min - clutter_scale / 2, x_max + clutter_scale / 2],
-        [y_min - clutter_scale / 2, y_max + clutter_scale / 2],
-    ]
+    clutter_area = np.array([[-1, 1], [-1, 1]]) * 50
     surveillance_area = (clutter_area[0][1] - clutter_area[0][0]) * (
         clutter_area[1][1] - clutter_area[1][0]
     )
     clutter_spatial_density = clutter_rate / surveillance_area
 
-    prob_detect = 0.5  # 50% chance of detection
+    prob_detect = 0.95  # 95% chance of detection
 
     # Generate the measurements
     all_measurements = []
@@ -91,24 +84,22 @@ if __name__ == "__main__":
                     )
                 )
 
-            # Generate clutter with Poisson number of clutter points
-            truth_x = truth[k].state_vector[mapping[0]]
-            truth_y = truth[k].state_vector[mapping[1]]
-            for _ in range(np.random.poisson(clutter_rate)):
-                x = uniform.rvs(loc=truth_x - clutter_scale / 2, scale=clutter_scale, size=1)[0]
-                y = uniform.rvs(loc=truth_y - clutter_scale / 2, scale=clutter_scale, size=1)[0]
-                clutter = StateVector(
-                    measurement_model.function(
-                        State(StateVector([x, 0, y, 0]), truth[k].timestamp), noise=False
-                    )
+        # Generate clutter with Poisson number of clutter points
+        for _ in range(np.random.poisson(clutter_rate)):
+            x = uniform.rvs(-20, 50)
+            y = uniform.rvs(-30, 70)
+            clutter = StateVector(
+                measurement_model.function(
+                    State(StateVector([x, 0, y, 0]), truth[k].timestamp), noise=False
                 )
-                measurement_set.add(
-                    Clutter(
-                        clutter,
-                        measurement_model=measurement_model,
-                        timestamp=truth[k].timestamp,
-                    )
+            )
+            measurement_set.add(
+                Clutter(
+                    clutter,
+                    measurement_model=measurement_model,
+                    timestamp=truth[k].timestamp,
                 )
+            )
 
         all_measurements.append(measurement_set)
 
@@ -120,7 +111,7 @@ if __name__ == "__main__":
     for truth in truths:
         state_vector = truth[0].state_vector.flatten()
         samples = np.random.multivariate_normal(
-            mean=state_vector, cov=np.diag([1.5, 0.5, 1.5, 0.5]), size=num_particles
+            mean=state_vector, cov=np.diag([15, 0.5, 15, 0.5]), size=num_particles
         )
         weights = np.ones(num_particles) / num_particles
         particles = np.array(
@@ -129,8 +120,22 @@ if __name__ == "__main__":
         prior = ParticleState(particles, timestamp=start_time)
         tracks.append([prior])
 
+    # Define likelihood function and its arguments
+    likelihood_func = multivariate_t.pdf
+    likelihood_func_kwargs = {"shape": measurement_model.covar, "df": measurement_model.covar.ndim}
+    # likelihood_func = multivariate_normal.pdf
+    # likelihood_func_kwargs = {"cov": measurement_model.covar}
+
+    # Create the particle filter transition model
+    process_noise = 0.1
+    transition_model = CombinedLinearGaussianTransitionModel(
+        [ConstantVelocity(process_noise), ConstantVelocity(process_noise)]
+    )
+
     # Create the ELPF
-    pf = MultiTargetExpectedLikelihoodParticleFilter(transition_model, measurement_model, t_pdf)
+    pf = MultiTargetExpectedLikelihoodParticleFilter(
+        transition_model, measurement_model, likelihood_func
+    )
 
     # Perform the particle filtering
     for measurements in tqdm(all_measurements, desc="Filtering"):
@@ -140,7 +145,9 @@ if __name__ == "__main__":
             priors.append(pf.predict(track[-1], time_interval))
 
         # Update the state
-        posteriors = pf.update(priors, measurements, prob_detect, clutter_spatial_density)
+        posteriors = pf.update(
+            priors, measurements, prob_detect, clutter_spatial_density, likelihood_func_kwargs
+        )
 
         for i in range(len(tracks)):
             tracks[i].append(posteriors[i])
