@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
 
 import numpy as np
-from scipy.stats import uniform
+from scipy.stats import multivariate_t, uniform
 from tqdm import tqdm
 
 from ELPF.array_type import StateVector
 from ELPF.detection import Clutter, TrueDetection
-from ELPF.likelihood import t_pdf
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.particle_filter import ExpectedLikelihoodParticleFilter
 from ELPF.plotting import AnimatedPlot
@@ -120,8 +119,11 @@ if __name__ == "__main__":
     particles = np.array([Particle(sample, weight) for sample, weight in zip(samples, weights)])
     prior = ParticleState(particles, timestamp=start_time)
 
+    likelihood_func = multivariate_t.pdf
+    likelihood_func_kwargs = {"shape": measurement_model.covar, "df": measurement_model.covar.ndim}
+
     # Create the ELPF
-    pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model, t_pdf)
+    pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model, likelihood_func)
 
     # Create a track to store the state estimates
     track = [prior]
@@ -132,7 +134,7 @@ if __name__ == "__main__":
         prior = pf.predict(track[-1], time_interval)
 
         # Update the state
-        posterior = pf.update(prior, measurements, prob_detect, clutter_spatial_density)
+        posterior = pf.update(prior, measurements, prob_detect, clutter_spatial_density, likelihood_func_kwargs)
 
         track.append(posterior)
 
