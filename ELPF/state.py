@@ -29,9 +29,9 @@ References:
 """
 
 from datetime import datetime
-
 import numpy as np
-
+from collections.abc import MutableSequence
+from typing import Any
 from ELPF.array_type import StateVector, StateVectors
 
 
@@ -50,6 +50,41 @@ class State:
         self.state_vector = state_vector
         self.timestamp = timestamp
 
+
+class GroundTruthPath:
+    """
+    Path class for representing the path of an object.
+
+    Parameters
+    ----------
+    states: list
+        The list of states in the path
+    """
+
+    def __init__(self, states=None):
+        if states is None:
+            states = []
+        if not isinstance(states, MutableSequence):
+            states = [states]
+        self.states = states
+
+    def __getitem__(self, item):
+        # If item is a datetime, return the corresponding state
+        if isinstance(item, datetime):
+            for state in self.states:
+                if state.timestamp == item:
+                    return state
+            raise IndexError('Timestamp not found in states.')
+        return self.states[item]
+    
+    def append(self, value):
+        self.states.append(value)
+
+    def __len__(self):
+        return len(self.states)
+
+    def __str__(self):
+        return f"GroundTruthPath with {len(self.states)} states"
 
 class GroundTruthState(State):
     def __init__(self, state_vector: np.ndarray, timestamp: datetime):
