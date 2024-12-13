@@ -35,7 +35,7 @@ if __name__ == "__main__":
     )
 
     # Number of steps
-    num_steps = 100
+    num_steps = 200
 
     # Start time
     start_time = datetime.now().replace(microsecond=0)
@@ -46,6 +46,7 @@ if __name__ == "__main__":
     truths = set()  # Truths across all time
     current_truths = set()  # Truths alive at current time
 
+    # Birth and death probabilities
     death_probability = 0.01
     birth_probability = 0.2
 
@@ -84,7 +85,7 @@ if __name__ == "__main__":
             truths.add(truth)
 
     # Clutter parameters
-    clutter_rate = 2
+    clutter_rate = 3
     x_min = min(state.state_vector[0, 0] for truth in truths for state in truth)
     x_max = max(state.state_vector[0, 0] for truth in truths for state in truth)
     y_min = min(state.state_vector[2, 0] for truth in truths for state in truth)
@@ -92,7 +93,7 @@ if __name__ == "__main__":
     surveillance_area = (x_max - x_min) * (y_max - y_min)
     clutter_spatial_density = clutter_rate / surveillance_area
 
-    prob_detect = 0.99  # 99% chance of detection
+    prob_detect = 0.95  # 95% chance of detection
 
     # Generate the measurements
     all_measurements = []
@@ -155,20 +156,19 @@ if __name__ == "__main__":
         clutter_spatial_density,
         likelihood_func,
         likelihood_func_kwargs,
-        gate_probability=0.95,
-        include_all=False,
+        gate_probability=0.99,
     )
 
     # Create the deleter
-    deleter = CovarianceBasedDeleter(2)
+    deleter = CovarianceBasedDeleter(3)
 
     # Create the initiator
     initiator = GaussianParticleInitiator(1000)
 
-    all_tracks = set()
-    current_tracks = set()
+    all_tracks = set()  # All tracks across all time
+    current_tracks = set()  # Tracks alive at current time
 
-    confirmation_age = 10
+    confirmation_age = 10  # Confirmation age for tracks
 
     # Perform the particle filtering
     for n, measurements in tqdm(enumerate(all_measurements), desc="Filtering", total=num_steps):
@@ -187,8 +187,6 @@ if __name__ == "__main__":
 
             track.append(posterior)
 
-            if not hasattr(track, "age"):
-                track.age = 0
             track.age += 1
 
         # Carry out deletion and initiation
