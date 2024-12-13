@@ -9,14 +9,14 @@ class Hypothesis:
         self.measurement_prediction = measurement_prediction
 
 
-class SingleHypothesis(Hypothesis):
+class SingleProbabilityHypothesis(Hypothesis):
 
     def __init__(self, prediction, measurement, probability, measurement_prediction=None):
         super().__init__(prediction, measurement, measurement_prediction)
         self.probability = probability
 
 
-class JointHypothesis:
+class JointProbabilityHypothesis:
 
     def __init__(self, hypotheses):
         self.hypotheses = hypotheses
