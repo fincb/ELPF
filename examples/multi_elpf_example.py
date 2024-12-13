@@ -6,11 +6,11 @@ from tqdm import tqdm
 
 from ELPF.array_type import StateVector
 from ELPF.detection import Clutter, TrueDetection
-from ELPF.filter import MultiTargetExpectedLikelihoodParticleFilter
+from ELPF.filter import ExpectedLikelihoodParticleFilter
 from ELPF.hypothesise import JPDAHypothesiser
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.plotting import AnimatedPlot
-from ELPF.state import GroundTruthPath, GroundTruthState, Particle, ParticleState, State
+from ELPF.state import GroundTruthPath, GroundTruthState, Particle, ParticleState, State, Track
 from ELPF.transition import CombinedLinearGaussianTransitionModel, ConstantVelocity
 
 if __name__ == "__main__":
@@ -59,10 +59,11 @@ if __name__ == "__main__":
 
     # Clutter parameters
     clutter_rate = 2
-    clutter_area = np.array([[-1, 1], [-1, 1]]) * 50
-    surveillance_area = (clutter_area[0][1] - clutter_area[0][0]) * (
-        clutter_area[1][1] - clutter_area[1][0]
-    )
+    x_min = min(state.state_vector[0, 0] for truth in truths for state in truth)
+    x_max = max(state.state_vector[0, 0] for truth in truths for state in truth)
+    y_min = min(state.state_vector[2, 0] for truth in truths for state in truth)
+    y_max = max(state.state_vector[2, 0] for truth in truths for state in truth)
+    surveillance_area = (x_max - x_min) * (y_max - y_min)
     clutter_spatial_density = clutter_rate / surveillance_area
 
     prob_detect = 0.95  # 95% chance of detection
@@ -86,8 +87,8 @@ if __name__ == "__main__":
 
         # Generate clutter with Poisson number of clutter points
         for _ in range(np.random.poisson(clutter_rate)):
-            x = uniform.rvs(-20, 50)
-            y = uniform.rvs(-30, 70)
+            x = uniform.rvs(x_min, x_max - x_min)
+            y = uniform.rvs(y_min, y_max - y_min)
             clutter = StateVector(
                 measurement_model.function(
                     State(StateVector([x, 0, y, 0]), truth[k].timestamp), noise=False
@@ -114,7 +115,7 @@ if __name__ == "__main__":
             [Particle(sample, weight) for sample, weight in zip(samples, weights)]
         )
         prior = ParticleState(particles, timestamp=start_time)
-        tracks.append([prior])
+        tracks.append(Track([prior]))
 
     # Define likelihood function and its arguments
     likelihood_func = multivariate_t.pdf
@@ -127,30 +128,28 @@ if __name__ == "__main__":
     )
 
     # Create the ELPF
-    pf = MultiTargetExpectedLikelihoodParticleFilter(transition_model, measurement_model)
+    pf = ExpectedLikelihoodParticleFilter(transition_model, measurement_model)
 
     # Create hypothesiser
     hypothesiser = JPDAHypothesiser(
-        measurement_model,
-        prob_detect,
-        clutter_spatial_density,
-        likelihood_func,
-        likelihood_func_kwargs,
+        measurement_model=measurement_model,
+        detection_probability=prob_detect,
+        clutter_spatial_density=clutter_spatial_density,
+        likelihood_function=likelihood_func,
+        likelihood_function_args=likelihood_func_kwargs,
+        gate_probability=0.95,
+        include_all=False,
     )
 
     # Perform the particle filtering
     for measurements in tqdm(all_measurements, desc="Filtering"):
-        priors = []
-        for track in tracks:
-            # Predict the new state
-            priors.append(pf.predict(track[-1], time_interval))
+        priors = [pf.predict(track[-1], time_interval) for track in tracks]
 
-        # Update the state
         hypotheses = hypothesiser.hypothesise(priors, measurements)
-        posteriors = pf.update(priors, hypotheses)
 
-        for i in range(len(tracks)):
-            tracks[i].append(posteriors[i])
+        for i, track in enumerate(tracks):
+            post = pf.update(priors[i], hypotheses[priors[i]])
+            track.append(post)
 
     # Plot the results
     plotter = AnimatedPlot(timesteps, tail_length=1)
