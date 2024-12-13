@@ -10,7 +10,7 @@ from ELPF.filter import ExpectedLikelihoodParticleFilter
 from ELPF.hypothesise import PDAHypothesiser
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.plotting import AnimatedPlot
-from ELPF.state import GroundTruthPath, GroundTruthState, Particle, ParticleState, State
+from ELPF.state import GroundTruthPath, GroundTruthState, Particle, ParticleState, State, Track
 from ELPF.transition import CombinedLinearGaussianTransitionModel, ConstantVelocity
 
 if __name__ == "__main__":
@@ -27,14 +27,14 @@ if __name__ == "__main__":
     )
 
     # Create the measurement model
-    measurement_noise = np.diag([1, np.deg2rad(2)])  # Noise covariance for range and bearing
+    measurement_noise = np.diag([1, np.deg2rad(0.2)])  # Noise covariance for range and bearing
     translation_offset = np.array([[0], [0]])
     measurement_model = CartesianToRangeBearingMeasurementModel(
         measurement_noise, mapping, translation_offset
     )
 
     # Number of steps
-    num_steps = 300
+    num_steps = 200
 
     # Start time
     start_time = datetime.now().replace(microsecond=0)
@@ -54,23 +54,14 @@ if __name__ == "__main__":
 
     # Clutter parameters
     clutter_rate = 2
-    clutter_scale = 300
-    x_min, x_max = min([state.state_vector[mapping[0]] for state in truth]), max(
-        [state.state_vector[mapping[0]] for state in truth]
-    )
-    y_min, y_max = min([state.state_vector[mapping[1]] for state in truth]), max(
-        [state.state_vector[mapping[1]] for state in truth]
-    )
-    clutter_area = [
-        [x_min - clutter_scale / 2, x_max + clutter_scale / 2],
-        [y_min - clutter_scale / 2, y_max + clutter_scale / 2],
-    ]
-    surveillance_area = (clutter_area[0][1] - clutter_area[0][0]) * (
-        clutter_area[1][1] - clutter_area[1][0]
-    )
+    x_min = min(state.state_vector[0, 0] for state in truth)
+    x_max = max(state.state_vector[0, 0] for state in truth)
+    y_min = min(state.state_vector[2, 0] for state in truth)
+    y_max = max(state.state_vector[2, 0] for state in truth)
+    surveillance_area = (x_max - x_min) * (y_max - y_min)
     clutter_spatial_density = clutter_rate / surveillance_area
 
-    prob_detect = 0.5  # 50% chance of detection
+    prob_detect = 0.95  # 95% chance of detection
 
     # Generate measurements
     all_measurements = []
@@ -92,8 +83,8 @@ if __name__ == "__main__":
         truth_x = state.state_vector[mapping[0]]
         truth_y = state.state_vector[mapping[1]]
         for _ in range(np.random.poisson(clutter_rate)):
-            x = uniform.rvs(loc=truth_x - clutter_scale / 2, scale=clutter_scale, size=1)[0]
-            y = uniform.rvs(loc=truth_y - clutter_scale / 2, scale=clutter_scale, size=1)[0]
+            x = uniform.rvs(x_min, x_max - x_min)
+            y = uniform.rvs(y_min, y_max - y_min)
             clutter = StateVector(
                 measurement_model.function(
                     State(StateVector([x, 0, y, 0]), state.timestamp), noise=False
@@ -133,10 +124,12 @@ if __name__ == "__main__":
         clutter_spatial_density,
         likelihood_func,
         likelihood_func_kwargs,
+        gate_probability=0.99,
+        include_all=False,
     )
 
     # Create a track to store the state estimates
-    track = [prior]
+    track = Track([prior])
 
     # Perform the particle filtering
     for measurements in tqdm(all_measurements, desc="Filtering"):
