@@ -1,9 +1,11 @@
 from itertools import product
 
 import numpy as np
+from scipy.spatial.distance import mahalanobis
+from scipy.stats import chi2
 
 from ELPF.detection import MissedDetection
-from ELPF.hypothesis import JointHypothesis, SingleHypothesis
+from ELPF.hypothesis import JointProbabilityHypothesis, SingleProbabilityHypothesis
 
 
 class PDAHypothesiser:
@@ -14,6 +16,8 @@ class PDAHypothesiser:
         clutter_spatial_density,
         likelihood_function,
         likelihood_function_args,
+        gate_probability=0.95,
+        include_all=False,
     ):
         """
         measurement_model : MeasurementModel
@@ -22,6 +26,8 @@ class PDAHypothesiser:
             Probability of detecting the target.
         clutter_spatial_density : float
             Density of clutter (false alarms) in the measurement space.
+        probability_gate : float
+            Gate threshold for probability of association.
         likelihood_function : function
             Function to calculate the likelihood of a measurement given a predicted measurement.
         likelihood_function_args : dict
@@ -32,6 +38,8 @@ class PDAHypothesiser:
         self.clutter_spatial_density = clutter_spatial_density
         self.likelihood_func = likelihood_function
         self.likelihood_func_args = likelihood_function_args
+        self.gate_probability = gate_probability
+        self.include_all = include_all
 
     def hypothesise(self, particle_state, detections):
         """
@@ -51,14 +59,19 @@ class PDAHypothesiser:
             Hypotheses for each particle measurement combination, including missed detections.
         """
         # Predict measurements for all particles to compare to actual measurements
-        predicted_measurements = self.measurement_model.function(particle_state, noise=False)
+        predicted_measurements = self.measurement_model.function(
+            particle_state, noise=False
+        ).astype(np.float64)
+        mean_predicted_measurement = np.mean(predicted_measurements, axis=1)
+        covar = np.cov(predicted_measurements, rowvar=True)
 
         # Create a hypothesis for missed detection with a uniform probability across particles
         missed_detection_prob = np.full(
-            (len(particle_state.particles),), 1 - self.detection_probability
+            (len(particle_state.particles),),
+            1 - self.detection_probability * self.gate_probability,
         )
         hypotheses = [
-            SingleHypothesis(
+            SingleProbabilityHypothesis(
                 particle_state,
                 MissedDetection(),
                 missed_detection_prob,
@@ -66,22 +79,31 @@ class PDAHypothesiser:
             )
         ]
 
+        gate_threshold = chi2.ppf(self.gate_probability, df=mean_predicted_measurement.shape[0])
+
         # Create a hypothesis for each particle-measurement pair
         for measurement in detections:
-            # Compute differences between predicted and actual measurements for each particle
-            diffs = predicted_measurements - measurement.state_vector
-
-            # Calculate likelihood (probability) of this measurement for each particle
-            probability = (
-                self.likelihood_func(diffs.T, **self.likelihood_func_args)
-                * self.detection_probability
-                / self.clutter_spatial_density
+            measure = mahalanobis(
+                mean_predicted_measurement.flatten(), measurement.state_vector.flatten(), covar
             )
+            valid_measurement = measure <= gate_threshold or self.include_all
+            if valid_measurement:
+                # Compute differences between predicted and actual measurements for each particle
+                diffs = predicted_measurements - measurement.state_vector
 
-            # Append hypothesis with computed probability and predicted measurement
-            hypotheses.append(
-                SingleHypothesis(particle_state, measurement, probability, predicted_measurements)
-            )
+                # Calculate likelihood (probability) of this measurement for each particle
+                probability = (
+                    self.likelihood_func(diffs.T, **self.likelihood_func_args)
+                    * self.detection_probability
+                    / self.clutter_spatial_density
+                )
+
+                # Append hypothesis with computed probability and predicted measurement
+                hypotheses.append(
+                    SingleProbabilityHypothesis(
+                        particle_state, measurement, probability, predicted_measurements
+                    )
+                )
 
         return hypotheses
 
@@ -128,7 +150,7 @@ class JPDAHypothesiser(PDAHypothesiser):
                 measurements_assigned.add(measurement)
 
             if valid:
-                valid_joint_hypotheses.append(JointHypothesis(joint_hypothesis))
+                valid_joint_hypotheses.append(JointProbabilityHypothesis(joint_hypothesis))
 
         # Normalise joint hypotheses probabilities
         total_prob = np.sum([np.sum(jh.probability) for jh in valid_joint_hypotheses])
@@ -138,7 +160,7 @@ class JPDAHypothesiser(PDAHypothesiser):
         # Recalculate probabilities for single hypotheses based on joint hypotheses
         self._redistribute_probabilities(hypotheses, valid_joint_hypotheses)
 
-        return valid_joint_hypotheses
+        return hypotheses
 
     def _redistribute_probabilities(self, hypotheses, joint_hypotheses):
         """
@@ -152,7 +174,6 @@ class JPDAHypothesiser(PDAHypothesiser):
         joint_hypotheses : list of JointHypothesis
             Valid joint hypotheses containing combinations of single hypotheses.
         """
-
         # Iterate over all hypotheses for each particle state to update their probabilities
         for single_hypotheses in hypotheses.values():
             for single_hypothesis in single_hypotheses:
