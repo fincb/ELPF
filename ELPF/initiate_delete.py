@@ -18,7 +18,7 @@ class GaussianParticleInitiator:
             # Create prior state
             samples = np.random.multivariate_normal(
                 mean=state_vector,
-                cov=np.diag([0.01, 0.05, 0.01, 0.05]),
+                cov=np.diag([1.5, 0.5, 1.5, 0.5]),
                 size=self.num_particles,
             )
             weights = np.ones(self.num_particles) / self.num_particles
