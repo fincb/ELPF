@@ -28,10 +28,11 @@ References:
     Stone Soup Library: https://stonesoup.readthedocs.io/
 """
 
-from datetime import datetime
-import numpy as np
 from collections.abc import MutableSequence
-from typing import Any
+from datetime import datetime
+
+import numpy as np
+
 from ELPF.array_type import StateVector, StateVectors
 
 
@@ -74,9 +75,9 @@ class GroundTruthPath:
             for state in self.states:
                 if state.timestamp == item:
                     return state
-            raise IndexError('Timestamp not found in states.')
+            raise IndexError("Timestamp not found in states.")
         return self.states[item]
-    
+
     def append(self, value):
         self.states.append(value)
 
@@ -85,6 +86,7 @@ class GroundTruthPath:
 
     def __str__(self):
         return f"GroundTruthPath with {len(self.states)} states"
+
 
 class GroundTruthState(State):
     def __init__(self, state_vector: np.ndarray, timestamp: datetime):
@@ -176,6 +178,18 @@ class ParticleState(State):
         return np.average(self.state_vector, axis=1, weights=self.weights)
 
     @property
+    def covar(self) -> np.ndarray:
+        """
+        Calculates the weighted covariance of the particle states.
+
+        Returns
+        -------
+        np.ndarray
+            A 2D array representing the weighted covariance of the particle states.
+        """
+        return np.cov(self.state_vector, aweights=self.weights)
+
+    @property
     def num_particles(self) -> int:
         """
         Returns the number of particles.
@@ -186,3 +200,35 @@ class ParticleState(State):
             The number of particles in the particle state.
         """
         return len(self.particles)
+
+
+class Track:
+    """
+    Track class for representing the track of an object.
+
+    Parameters
+    ----------
+    states: list
+        The list of states in the track
+    """
+
+    def __init__(self, states=None):
+        self.states = states if states is not None else []
+
+    def __getitem__(self, item):
+        return self.states[item]
+
+    def __setitem__(self, index, value):
+        self.states[index] = value
+
+    def __delitem__(self, index):
+        del self.states[index]
+
+    def __len__(self):
+        return len(self.states)
+
+    def insert(self, index, value):
+        self.states.insert(index, value)
+
+    def append(self, value):
+        self.states.append(value)
