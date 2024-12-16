@@ -8,7 +8,11 @@ from ELPF.array_type import StateVector
 from ELPF.detection import Clutter, MissedDetection, TrueDetection
 from ELPF.filter import ExpectedLikelihoodParticleFilter
 from ELPF.hypothesise import PDAHypothesiser
-from ELPF.initiate_delete import CovarianceBasedDeleter, GaussianParticleInitiator
+from ELPF.initiate_delete import (
+    CovarianceBasedDeleter,
+    GaussianParticleInitiator,
+    MultiMeasurementInitiator,
+)
 from ELPF.measurement import CartesianToRangeBearingMeasurementModel
 from ELPF.plotting import AnimatedPlot
 from ELPF.state import GroundTruthPath, GroundTruthState, State
@@ -159,49 +163,58 @@ if __name__ == "__main__":
         gate_probability=0.99,
     )
 
-    # Create the deleter
     deleter = CovarianceBasedDeleter(3)
 
-    # Create the initiator
-    initiator = GaussianParticleInitiator(1000)
+    # Create the multi-measurement initiator
+    initiator = MultiMeasurementInitiator(
+        min_points=5,
+        particle_filter=pf,
+        hypothesiser=hypothesiser,
+        initiator=GaussianParticleInitiator(100),
+        deleter=deleter,
+        time_interval=time_interval,
+    )
 
     all_tracks = set()  # All tracks across all time
     current_tracks = set()  # Tracks alive at current time
 
-    confirmation_age = 10  # Confirmation age for tracks
-
     # Perform the particle filtering
     for n, measurements in tqdm(enumerate(all_measurements), desc="Filtering", total=num_steps):
         associated_measurements = set()
+
+        # Update existing tracks
         for track in current_tracks:
             # Predict the new state
             prior = pf.predict(track[-1], time_interval)
 
-            # Update the state
+            # Generate hypotheses and update state
             hypotheses = hypothesiser.hypothesise(prior, measurements)
             posterior = pf.update(prior, hypotheses)
 
+            # Associate measurements to tracks
             for hypothesis in hypotheses:
                 if not isinstance(hypothesis.measurement, MissedDetection):
                     associated_measurements.add(hypothesis.measurement)
 
+            # Append the posterior state to the track
             track.append(posterior)
 
-            track.age += 1
+        # Calculate timestamp for this iteration
+        timestamp = start_time + timedelta(seconds=n)
 
-        # Carry out deletion and initiation
+        # Remove invalid tracks
         current_tracks -= deleter.delete(current_tracks)
-        current_tracks |= initiator.initiate(
-            measurements - associated_measurements, start_time + timedelta(seconds=n)
-        )
-        all_tracks |= current_tracks
 
-    # Remove tracks that are too young
-    confirmed_tracks = {track for track in all_tracks if track.age >= confirmation_age}
+        # Initiate new tracks from unassociated measurements
+        unassociated_measurements = measurements - associated_measurements
+        current_tracks |= initiator.initiate(unassociated_measurements, timestamp)
+
+        # Add current tracks to the overall track set
+        all_tracks |= current_tracks
 
     # Plot the results
     plotter = AnimatedPlot(timesteps, tail_length=1)
     plotter.plot_truths(truths, mapping=mapping)
     plotter.plot_measurements(all_measurements)
-    plotter.plot_tracks(confirmed_tracks, mapping=mapping, plot_particles=True)
+    plotter.plot_tracks(all_tracks, mapping=mapping, plot_particles=True)
     plotter.show()

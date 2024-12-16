@@ -214,7 +214,6 @@ class Track:
 
     def __init__(self, states=None):
         self.states = states if states is not None else []
-        self.age = 0
 
     def __getitem__(self, item):
         return self.states[item]
